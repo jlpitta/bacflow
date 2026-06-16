@@ -1,0 +1,7 @@
+name: nextassembler-medaka
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - medaka=1.11.3
