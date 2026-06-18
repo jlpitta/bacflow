@@ -162,14 +162,36 @@ nextflow run nextassembler.nf -resume \
     --samplesheet samples.csv
 ```
 
-**Formato do CSV** (colunas `short_reads_1/2` são opcionais por linha):
+**Exemplo 1 — somente long reads (sem polimento short-read):**
+
+```csv
+sample,long_reads,short_reads_1,short_reads_2,genome_size
+amostra01,data/A01/lr.fastq.gz,,,5m
+amostra02,data/A02/lr.fastq.gz,,,4.8m
+amostra03,data/A03/lr.fastq.gz,,,5m
+```
+
+Amostras sem `short_reads_1/2` seguem o fluxo Flye → Medaka → QUAST, independente do `--polisher` configurado.
+
+**Exemplo 2 — long reads + short reads (com Polypolish por padrão):**
 
 ```csv
 sample,long_reads,short_reads_1,short_reads_2,genome_size
 amostra01,data/A01/lr.fastq.gz,data/A01/r1.fastq.gz,data/A01/r2.fastq.gz,5m
 amostra02,data/A02/lr.fastq.gz,data/A02/r1.fastq.gz,data/A02/r2.fastq.gz,5m
-amostra03,data/A03/lr.fastq.gz,,,4.8m
+amostra03,data/A03/lr.fastq.gz,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,4.8m
 ```
+
+**Exemplo 3 — misto (algumas amostras com short reads, outras sem):**
+
+```csv
+sample,long_reads,short_reads_1,short_reads_2,genome_size
+amostra01,data/A01/lr.fastq.gz,data/A01/r1.fastq.gz,data/A01/r2.fastq.gz,5m
+amostra02,data/A02/lr.fastq.gz,,,4.8m
+amostra03,data/A03/lr.fastq.gz,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,5m
+```
+
+Amostras com short reads passam pelo Polypolish; amostras sem short reads são polidas apenas com Medaka.
 
 - Amostras processadas em **paralelo**, limitadas pelo `--t` global
 - `genome_size` pode ser coluna no CSV (por amostra) ou `--genome_size` como parâmetro global
