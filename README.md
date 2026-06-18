@@ -62,8 +62,9 @@ Short reads ─► FASTP ──► R1.clean + R2.clean  (paralelo ao NanoFilt)  
 
 ### Pré-requisitos
 
-- [Nextflow](https://www.nextflow.io/docs/latest/install.html) ≥ 23.04
 - [Mamba](https://mamba.readthedocs.io/) ou [Conda](https://docs.conda.io/)
+
+> O Nextflow é instalado automaticamente dentro do ambiente `nextassembler-tools`. Não é necessário instalá-lo separadamente.
 
 ### Clonar e instalar ambientes
 
@@ -73,12 +74,24 @@ cd nextassembler
 
 # instalar os ambientes conda (obrigatório antes da primeira execução)
 bash install_envs.sh
+```
 
-# ou manualmente:
-mamba env create -f envs/tools.yaml
-mamba env create -f envs/medaka.yaml
+O script instala dois ambientes e exibe instruções para configurar o `nextflow` no terminal. Há duas opções:
 
-# verificar
+**Opção A — alias permanente** (recomendado): adicione ao `~/.bashrc`:
+```bash
+alias nextflow='mamba run -n nextassembler-tools nextflow'
+```
+Depois: `source ~/.bashrc`. A partir daí `nextflow` funciona diretamente em qualquer terminal.
+
+**Opção B — ativar o ambiente manualmente** antes de cada uso:
+```bash
+mamba activate nextassembler-tools
+nextflow run nextassembler.nf ...
+```
+
+```bash
+# verificar ambientes instalados
 mamba env list | grep nextassembler
 # nextassembler-tools   ~/.conda/envs/nextassembler-tools
 # nextassembler-medaka  ~/.conda/envs/nextassembler-medaka
@@ -92,7 +105,7 @@ mamba env list | grep nextassembler
 
 | Ambiente | YAML | Ferramentas |
 |---|---|---|
-| `nextassembler-tools` | `envs/tools.yaml` | nanofilt, fastp, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc, nanostat |
+| `nextassembler-tools` | `envs/tools.yaml` | nextflow, nanofilt, fastp, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc, nanostat |
 | `nextassembler-medaka` | `envs/medaka.yaml` | medaka=1.11.3 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
 
 O Medaka é mantido em ambiente isolado obrigatoriamente, pois suas dependências (TensorFlow, ONNX) conflitam com pacotes do canal bioconda.

@@ -18,3 +18,4 @@ dependencies:
   - multiqc=1.21
   - fastp=0.23.4
   - polypolish=0.6.0
+  - nextflow>=23.04
