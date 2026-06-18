@@ -8,6 +8,7 @@ include { FLYE              } from './modules/local/flye'
 include { UNICYCLER         } from './modules/local/unicycler'
 include { RACON             } from './modules/local/racon'
 include { MEDAKA            } from './modules/local/medaka'
+include { POLYPOLISH        } from './modules/local/polypolish'
 include { NEXTPOLISH        } from './modules/local/nextpolish'
 include { QUAST             } from './modules/local/quast'
 
@@ -46,7 +47,7 @@ def help_message() {
       --long_reads FILE       Long reads FASTQ.GZ (required)
       --genome_size SIZE      Genome size, e.g. 5m, 2.4g (required)
       --sample_name NAME      Output prefix [default: sample]
-      --short_reads_1 FILE    Short reads R1 (required for unicycler/nextpolish)
+      --short_reads_1 FILE    Short reads R1 (required for unicycler and short-read polishing)
       --short_reads_2 FILE    Short reads R2
 
     Input (multi-sample):
@@ -64,8 +65,8 @@ def help_message() {
 
     Polishing:
       --use_racon             Enable Racon polishing before Medaka
-      --use_nextpolish        Enable NextPolish short-read polishing
-      --nextpolish_rounds N   NextPolish rounds, 1-4 [default: 1]
+      --polisher POLISHER     Short-read polisher: polypolish (default), nextpolish, none
+      --nextpolish_rounds N   NextPolish rounds, 1-4 [default: 1] (only with --polisher nextpolish)
 
     Filtering:
       --min_quality N         NanoFilt minimum Q-score [default: 10]
@@ -144,7 +145,7 @@ workflow {
 
     // ── short-read QC ────────────────────────────────────────────────────────
     def ch_sr_clean = Channel.empty()
-    if (params.use_nextpolish || params.assembler == 'unicycler') {
+    if (params.polisher != 'none' || params.assembler == 'unicycler') {
         FASTP(ch_sr)
         ch_sr_clean = FASTP.out.reads
     }
@@ -184,8 +185,11 @@ workflow {
             ch_draft = MEDAKA.out.assembly
         }
 
-        // optional NextPolish
-        if (params.use_nextpolish) {
+        // short-read polishing
+        if (params.polisher == 'polypolish') {
+            POLYPOLISH(ch_draft.join(ch_sr_clean))
+            ch_draft = POLYPOLISH.out.assembly
+        } else if (params.polisher == 'nextpolish') {
             NEXTPOLISH(ch_draft.join(ch_sr_clean), params.nextpolish_rounds)
             ch_draft = NEXTPOLISH.out.assembly
         }
@@ -208,7 +212,10 @@ workflow {
         MEDAKA(ch_medaka_input, medaka_model)
         def ch_draft = MEDAKA.out.assembly
 
-        if (params.use_nextpolish) {
+        if (params.polisher == 'polypolish') {
+            POLYPOLISH(ch_draft.join(ch_sr_clean))
+            ch_draft = POLYPOLISH.out.assembly
+        } else if (params.polisher == 'nextpolish') {
             NEXTPOLISH(ch_draft.join(ch_sr_clean), params.nextpolish_rounds)
             ch_draft = NEXTPOLISH.out.assembly
         }
