@@ -3,7 +3,7 @@
 process MEDAKA {
     tag "$sample"
     label 'process_medium'
-    conda 'nextassembler-medaka'
+    conda 'bacflow-medaka'
     publishDir "${params.outdir}/${sample}/polishing/medaka", mode: 'copy'
 
     input:

@@ -1,4 +1,4 @@
-name: nextassembler-medaka
+name: bacflow-medaka
 channels:
   - bioconda
   - conda-forge

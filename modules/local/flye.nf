@@ -3,7 +3,7 @@
 process FLYE {
     tag "$sample"
     label 'process_high'
-    conda 'nextassembler-tools'
+    conda 'bacflow-tools'
     publishDir "${params.outdir}/${sample}/assembly/flye", mode: 'copy'
 
     input:

@@ -3,7 +3,7 @@
 process NANOFILT {
     tag "$sample"
     label 'process_low'
-    conda 'nextassembler-tools'
+    conda 'bacflow-tools'
     publishDir "${params.outdir}/${sample}/qc/nanofilt", mode: 'copy'
 
     input:

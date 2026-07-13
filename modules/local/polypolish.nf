@@ -3,7 +3,7 @@
 process POLYPOLISH {
     tag "$sample"
     label 'process_medium'
-    conda 'nextassembler-tools'
+    conda 'bacflow-tools'
     publishDir "${params.outdir}/${sample}/polishing/polypolish", mode: 'copy'
 
     input:

@@ -18,23 +18,23 @@ fi
 
 echo "==> Usando: ${PKG}"
 
-echo "==> Instalando nextassembler-tools..."
+echo "==> Instalando bacflow-tools..."
 ${PKG} env create -f "${SCRIPT_DIR}/envs/tools.yaml" --yes || \
     ${PKG} env update -f "${SCRIPT_DIR}/envs/tools.yaml" --prune
 
-echo "==> Instalando nextassembler-medaka..."
+echo "==> Instalando bacflow-medaka..."
 ${PKG} env create -f "${SCRIPT_DIR}/envs/medaka.yaml" --yes || \
     ${PKG} env update -f "${SCRIPT_DIR}/envs/medaka.yaml" --prune
 
 echo ""
 echo "Ambientes instalados:"
-${PKG} env list | grep -E 'nextassembler'
+${PKG} env list | grep -E 'bacflow'
 echo ""
 echo "Para usar o nextflow instalado no ambiente, adicione ao seu ~/.bashrc:"
-echo "  alias nextflow='${PKG} run -n nextassembler-tools nextflow'"
+echo "  alias nextflow='${PKG} run -n bacflow-tools nextflow'"
 echo ""
 echo "Ou ative o ambiente manualmente antes de rodar:"
-echo "  ${PKG} activate nextassembler-tools"
+echo "  ${PKG} activate bacflow-tools"
 echo ""
 echo "Pronto. Execute o pipeline com:"
-echo "  nextflow run ${SCRIPT_DIR}/nextassembler.nf --help"
+echo "  nextflow run ${SCRIPT_DIR}/bacflow.nf --help"

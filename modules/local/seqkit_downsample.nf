@@ -3,7 +3,7 @@
 process SEQKIT_DOWNSAMPLE {
     tag "$sample"
     label 'process_low'
-    conda 'nextassembler-tools'
+    conda 'bacflow-tools'
 
     input:
     tuple val(sample), path(reads)

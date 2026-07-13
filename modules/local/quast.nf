@@ -3,7 +3,7 @@
 process QUAST {
     tag "$sample"
     label 'process_low'
-    conda 'nextassembler-tools'
+    conda 'bacflow-tools'
     publishDir "${params.outdir}/${sample}/qc/quast", mode: 'copy'
 
     input:

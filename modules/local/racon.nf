@@ -3,7 +3,7 @@
 process RACON {
     tag "$sample"
     label 'process_medium'
-    conda 'nextassembler-tools'
+    conda 'bacflow-tools'
     publishDir "${params.outdir}/${sample}/polishing/racon", mode: 'copy'
 
     input:

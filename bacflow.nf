@@ -1,5 +1,5 @@
 #!/usr/bin/env nextflow
-// nextassembler — Pipeline Nextflow para montagem de genoma long-read com polimento híbrido
+// bacflow — Pipeline Nextflow para montagem de genoma long-read com polimento híbrido
 // By João Pitta (jlpitta82@gmail.com) and Beatriz Toscano (beatriz.melo@fiocruz.br)
 // At Fiocruz-PE
 // Tue 16 Jun 2026 15:42 -03 (Primeira versão)
@@ -41,12 +41,12 @@ def resolved_medaka_model(params) {
 def help_message() {
     log.info """
     ╔══════════════════════════════════════════════════════════╗
-    ║              nextassembler v${workflow.manifest.version}                    ║
+    ║              bacflow v${workflow.manifest.version}                    ║
     ║        Long-Read Genome Assembly Pipeline                ║
     ╚══════════════════════════════════════════════════════════╝
 
     Usage:
-      nextflow run nextassembler.nf [options]
+      nextflow run bacflow.nf [options]
 
     Input (single-sample):
       --long_reads FILE       Long reads FASTQ.GZ (required, unless assembling short-read-only)

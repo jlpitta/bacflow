@@ -1,4 +1,4 @@
-# nextassembler
+# bacflow
 
 Pipeline [Nextflow](https://www.nextflow.io/) DSL2 para **montagem de genomas**, com dois caminhos automáticos conforme os dados disponíveis por amostra: **long-read com polishing híbrido** (long reads + short reads Illumina, via Flye) ou **short-read-only** (só Illumina, via Unicycler). Combina ferramentas de montagem, polishing e avaliação de qualidade em um fluxo automatizado com gerenciamento de ambientes Conda.
 
@@ -67,13 +67,13 @@ Amostra tem long_reads?
 
 - [Mamba](https://mamba.readthedocs.io/), [Micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html) ou [Conda](https://docs.conda.io/) — o script de instalação detecta automaticamente qual está disponível
 
-> O Nextflow é instalado automaticamente dentro do ambiente `nextassembler-tools`. Não é necessário instalá-lo separadamente.
+> O Nextflow é instalado automaticamente dentro do ambiente `bacflow-tools`. Não é necessário instalá-lo separadamente.
 
 ### Clonar e instalar ambientes
 
 ```bash
-git clone https://github.com/jlpitta/nextassembler
-cd nextassembler
+git clone https://github.com/jlpitta/bacflow
+cd bacflow
 
 # instalar os ambientes conda (obrigatório antes da primeira execução)
 bash install_envs.sh
@@ -83,26 +83,26 @@ O script detecta automaticamente `mamba`, `micromamba` ou `conda` (nessa ordem d
 
 **Opção A — alias permanente** (recomendado): adicione ao `~/.bashrc`:
 ```bash
-alias nextflow='mamba run -n nextassembler-tools nextflow'
+alias nextflow='mamba run -n bacflow-tools nextflow'
 # ou, se usar micromamba:
-alias nextflow='micromamba run -n nextassembler-tools nextflow'
+alias nextflow='micromamba run -n bacflow-tools nextflow'
 ```
 Depois: `source ~/.bashrc`. A partir daí `nextflow` funciona diretamente em qualquer terminal.
 
 **Opção B — ativar o ambiente manualmente** antes de cada uso:
 ```bash
-mamba activate nextassembler-tools   # ou: micromamba activate / conda activate
-nextflow run nextassembler.nf ...
+mamba activate bacflow-tools   # ou: micromamba activate / conda activate
+nextflow run bacflow.nf ...
 ```
 
 ```bash
 # verificar ambientes instalados
-mamba env list | grep nextassembler
-# nextassembler-tools   ~/.conda/envs/nextassembler-tools
-# nextassembler-medaka  ~/.conda/envs/nextassembler-medaka
+mamba env list | grep bacflow
+# bacflow-tools   ~/.conda/envs/bacflow-tools
+# bacflow-medaka  ~/.conda/envs/bacflow-medaka
 ```
 
-> **Importante:** os módulos referenciam os ambientes pelo **nome fixo** (`nextassembler-tools` / `nextassembler-medaka`), não pelo caminho do YAML. A pré-instalação é obrigatória antes da primeira execução.
+> **Importante:** os módulos referenciam os ambientes pelo **nome fixo** (`bacflow-tools` / `bacflow-medaka`), não pelo caminho do YAML. A pré-instalação é obrigatória antes da primeira execução.
 
 ---
 
@@ -110,8 +110,8 @@ mamba env list | grep nextassembler
 
 | Ambiente | YAML | Ferramentas |
 |---|---|---|
-| `nextassembler-tools` | `envs/tools.yaml` | nextflow, nanofilt, fastp, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc, nanostat |
-| `nextassembler-medaka` | `envs/medaka.yaml` | medaka=1.11.3 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
+| `bacflow-tools` | `envs/tools.yaml` | nextflow, nanofilt, fastp, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc, nanostat |
+| `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
 
 O Medaka é mantido em ambiente isolado obrigatoriamente, pois suas dependências (TensorFlow, ONNX) conflitam com pacotes do canal bioconda.
 
@@ -150,7 +150,7 @@ O pipeline aceita duas formas de entrada, mutuamente exclusivas:
 **Long reads + short reads (híbrido, Flye):**
 
 ```bash
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 32 \
     --long_reads lr.fastq.gz \
     --genome_size 5m \
@@ -162,7 +162,7 @@ nextflow run nextassembler.nf -resume \
 **Somente short reads (short-read-only, Unicycler) — sem `--long_reads` nem `--genome_size`:**
 
 ```bash
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 32 \
     --sample_name amostra01 \
     --short_reads_1 r1.fastq.gz \
@@ -174,7 +174,7 @@ O pipeline detecta automaticamente a ausência de `--long_reads` e monta com Uni
 ### Multi-sample — samplesheet CSV
 
 ```bash
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv
 ```
@@ -256,14 +256,14 @@ Cada fluxo pode ser executado de duas formas:
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 16 \
     --long_reads lr.fastq.gz \
     --genome_size 5m \
     --sample_name amostra01
 
 # multi-sample (samples.csv: sample,long_reads,genome_size)
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv
 ```
@@ -272,7 +272,7 @@ nextflow run nextassembler.nf -resume \
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 16 \
     --long_reads lr.fastq.gz \
     --genome_size 5m \
@@ -280,7 +280,7 @@ nextflow run nextassembler.nf -resume \
     --use_racon
 
 # multi-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv \
     --use_racon
@@ -292,7 +292,7 @@ nextflow run nextassembler.nf -resume \
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 32 \
     --long_reads lr.fastq.gz \
     --short_reads_1 r1.fastq.gz \
@@ -301,7 +301,7 @@ nextflow run nextassembler.nf -resume \
     --sample_name amostra01
 
 # multi-sample (samples.csv: sample,long_reads,short_reads_1,short_reads_2,genome_size)
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv
 ```
@@ -310,7 +310,7 @@ nextflow run nextassembler.nf -resume \
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 32 \
     --long_reads lr.fastq.gz \
     --short_reads_1 r1.fastq.gz \
@@ -320,7 +320,7 @@ nextflow run nextassembler.nf -resume \
     --use_racon
 
 # multi-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv \
     --use_racon
@@ -334,14 +334,14 @@ nextflow run nextassembler.nf -resume \
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 32 \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz \
     --sample_name amostra01
 
 # multi-sample (samples.csv: sample,long_reads,short_reads_1,short_reads_2,genome_size — long_reads e genome_size vazios)
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv
 ```
@@ -352,7 +352,7 @@ nextflow run nextassembler.nf -resume \
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 16 \
     --mode reference \
     --long_reads lr.fastq.gz \
@@ -360,7 +360,7 @@ nextflow run nextassembler.nf -resume \
     --sample_name amostra01
 
 # multi-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --mode reference \
     --samplesheet samples.csv \
@@ -371,7 +371,7 @@ nextflow run nextassembler.nf -resume \
 
 ```bash
 # single-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 32 \
     --mode reference \
     --long_reads lr.fastq.gz \
@@ -381,7 +381,7 @@ nextflow run nextassembler.nf -resume \
     --sample_name amostra01
 
 # multi-sample
-nextflow run nextassembler.nf -resume \
+nextflow run bacflow.nf -resume \
     --t 64 \
     --mode reference \
     --samplesheet samples.csv \
@@ -456,22 +456,22 @@ profiles {
 
 | Situação | Comando |
 |---|---|
-| Mamba (padrão) | `nextflow run nextassembler.nf ...` |
-| Conda | `nextflow run nextassembler.nf -profile conda ...` |
-| Micromamba | `nextflow run nextassembler.nf -profile micromamba ...` |
+| Mamba (padrão) | `nextflow run bacflow.nf ...` |
+| Conda | `nextflow run bacflow.nf -profile conda ...` |
+| Micromamba | `nextflow run bacflow.nf -profile micromamba ...` |
 
 ---
 
 ## Estrutura de arquivos
 
 ```
-nextassembler/
-├── nextassembler.nf          # script principal DSL2
+bacflow/
+├── bacflow.nf          # script principal DSL2
 ├── nextflow.config           # configuração global, parâmetros, profiles, CPUs
 ├── install_envs.sh           # pré-instala os ambientes conda
 ├── envs/
-│   ├── tools.yaml            # → nextassembler-tools
-│   └── medaka.yaml           # → nextassembler-medaka (isolada)
+│   ├── tools.yaml            # → bacflow-tools
+│   └── medaka.yaml           # → bacflow-medaka (isolada)
 └── modules/local/
     ├── nanofilt.nf
     ├── fastp.nf
@@ -504,7 +504,7 @@ nextassembler/
 
 **Retomar execução interrompida:**
 ```bash
-nextflow run nextassembler.nf -resume ...
+nextflow run bacflow.nf -resume ...
 # requer: process.cache = lenient  +  workDir fixo no nextflow.config
 ```
 
