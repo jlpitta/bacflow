@@ -130,6 +130,11 @@ workflow {
 
     if (params.help) { help_message(); exit 0 }
 
+    def max_cpus = Runtime.runtime.availableProcessors()
+    if (params.t > max_cpus) {
+        log.warn "Requested --t ${params.t} exceeds available CPUs (${max_cpus}) on this machine — capping to ${max_cpus}."
+    }
+
     // resolve platform defaults
     def flye_mode    = resolved_flye_mode(params)
     def medaka_model = resolved_medaka_model(params)
@@ -189,7 +194,12 @@ workflow {
     def ch_sr_clean = FASTP.out.reads
 
     // ── reference channel for QUAST ──────────────────────────────────────────
-    def ch_reference = params.reference ? Channel.fromPath(params.reference) : Channel.value([])
+    def ch_reference
+    if (params.reference) {
+        ch_reference = Channel.fromPath(params.reference)
+    } else {
+        ch_reference = Channel.value([])
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
@@ -253,7 +263,8 @@ workflow {
 
         if (!params.reference) error "--reference is required in reference mode"
 
-        def ch_ref_draft = Channel.fromPath(params.reference)
+        def ch_ref_draft
+        ch_ref_draft = Channel.fromPath(params.reference)
             .map { f -> tuple(params.sample_name, f) }
 
         // combine per-sample lr with the reference draft
