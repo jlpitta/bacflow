@@ -1,10 +1,10 @@
 // By João Pitta (jlpitta82@gmail.com) and Beatriz Toscano (beatriz.melo@fiocruz.br)
 // At Fiocruz-PE
 process UNICYCLER {
-    tag "$sample"
+    tag { sample }
     label 'process_high'
     conda 'bacflow-tools'
-    publishDir "${params.outdir}/${sample}/assembly/unicycler", mode: 'copy'
+    publishDir { "${params.outdir}/${sample}/assembly/unicycler" }, mode: 'copy'
 
     input:
     tuple val(sample), path(r1), path(r2)

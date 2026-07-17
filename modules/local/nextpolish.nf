@@ -1,10 +1,10 @@
 // By João Pitta (jlpitta82@gmail.com) and Beatriz Toscano (beatriz.melo@fiocruz.br)
 // At Fiocruz-PE
 process NEXTPOLISH {
-    tag "$sample"
+    tag { sample }
     label 'process_medium'
     conda 'bacflow-tools'
-    publishDir "${params.outdir}/${sample}/polishing/nextpolish", mode: 'copy'
+    publishDir { "${params.outdir}/${sample}/polishing/nextpolish" }, mode: 'copy'
 
     input:
     tuple val(sample), path(assembly), path(r1), path(r2)

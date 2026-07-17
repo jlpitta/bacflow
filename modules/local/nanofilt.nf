@@ -1,10 +1,10 @@
 // By João Pitta (jlpitta82@gmail.com) and Beatriz Toscano (beatriz.melo@fiocruz.br)
 // At Fiocruz-PE
 process NANOFILT {
-    tag "$sample"
+    tag { sample }
     label 'process_low'
     conda 'bacflow-tools'
-    publishDir "${params.outdir}/${sample}/qc/nanofilt", mode: 'copy'
+    publishDir { "${params.outdir}/${sample}/qc/nanofilt" }, mode: 'copy'
 
     input:
     tuple val(sample), path(reads)

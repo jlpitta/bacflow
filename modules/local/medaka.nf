@@ -1,10 +1,10 @@
 // By João Pitta (jlpitta82@gmail.com) and Beatriz Toscano (beatriz.melo@fiocruz.br)
 // At Fiocruz-PE
 process MEDAKA {
-    tag "$sample"
+    tag { sample }
     label 'process_medium'
     conda 'bacflow-medaka'
-    publishDir "${params.outdir}/${sample}/polishing/medaka", mode: 'copy'
+    publishDir { "${params.outdir}/${sample}/polishing/medaka" }, mode: 'copy'
 
     input:
     tuple val(sample), path(reads), path(draft)

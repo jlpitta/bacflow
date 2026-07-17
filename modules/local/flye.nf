@@ -1,15 +1,14 @@
 // By João Pitta (jlpitta82@gmail.com) and Beatriz Toscano (beatriz.melo@fiocruz.br)
 // At Fiocruz-PE
 process FLYE {
-    tag "$sample"
+    tag { sample }
     label 'process_high'
     conda 'bacflow-tools'
-    publishDir "${params.outdir}/${sample}/assembly/flye", mode: 'copy'
+    publishDir { "${params.outdir}/${sample}/assembly/flye" }, mode: 'copy'
 
     input:
-    tuple val(sample), path(reads)
+    tuple val(sample), path(reads), val(genome_size)
     val flye_mode
-    val genome_size
 
     output:
     tuple val(sample), path("${sample}.assembly.fasta"), emit: assembly

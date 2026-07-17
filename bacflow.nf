@@ -20,13 +20,12 @@ include { QUAST             } from './modules/local/quast'
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 def platform_defaults(platform) {
-    switch (platform) {
-        case 'ont':
-            return [flye_mode: 'nano-hq', medaka_model: 'r1041_e82_400bps_hac_g632']
-        case 'pacbio':
-            return [flye_mode: 'pacbio-hifi', medaka_model: null]
-        default: // mgicyclone
-            return [flye_mode: 'nano-raw', medaka_model: 'r941_min_hac_g507']
+    if (platform == 'ont') {
+        return [flye_mode: 'nano-hq', medaka_model: 'r1041_e82_400bps_hac_g632']
+    } else if (platform == 'pacbio') {
+        return [flye_mode: 'pacbio-hifi', medaka_model: null]
+    } else { // mgicyclone
+        return [flye_mode: 'nano-raw', medaka_model: 'r941_min_hac_g507']
     }
 }
 
