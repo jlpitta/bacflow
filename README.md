@@ -14,10 +14,12 @@ Pipeline [Nextflow](https://www.nextflow.io/) DSL2 para **montagem de genomas**,
 - [Modos de execução](#modos-de-execução)
 - [Modos de input](#modos-de-input)
 - [Parâmetros](#parâmetros)
+- [QC de reads (raw vs. trimmed)](#qc-de-reads-raw-vs-trimmed)
 - [Os 7 fluxos de execução](#os-7-fluxos-de-execução)
 - [Controle de CPUs](#controle-de-cpus)
 - [Profiles (gerenciador de pacotes)](#profiles-gerenciador-de-pacotes)
 - [Estrutura de arquivos](#estrutura-de-arquivos)
+- [Estrutura de resultados](#estrutura-de-resultados)
 - [Regras importantes](#regras-importantes)
 
 ---
@@ -32,23 +34,33 @@ long-only e short-only.
 ```
 Amostra tem long_reads?
 │
-├── SIM ──► NanoFilt ──► [Flye] ──► [Racon] (opc.) ──► [Medaka] ──┐
-│                                                                  │
-│           Short reads (se houver) ─► FASTP ─► [Polypolish] ou [NextPolish] (opc.)
-│                                                                  │
-└── NÃO ──► Short reads ─► FASTP ─► [Unicycler] ──────────────────┤
-            (short-read-only, sem Racon/Medaka/polish adicional)  │
-                                                                   ▼
-                                                              [QUAST]
-                                                                   │
-                                                          relatório de qualidade
+├── SIM ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opc.) ──► [Medaka] ──┐
+│                                                                    │
+│           Short reads (se houver) ─► FASTP² ─► [Polypolish] ou [NextPolish] (opc.)
+│                                                                    │
+└── NÃO ──► Short reads ─► FASTP² ─► [Unicycler] ────────────────────┤
+            (short-read-only, sem Racon/Medaka/polish adicional)    │
+                                                                     ▼
+                                                                [QUAST]
+                                                                     │
+                                                            relatório de qualidade
+
+¹ NanoFilt é bracketado por QC raw-vs-trimmed: NanoStat (antes/depois) + NanoComp
+  (comparativo HTML) — roda sempre em paralelo, não bloqueia o fluxo
+² FASTP é bracketado por QC raw-vs-trimmed: FastQC (antes/depois) — roda sempre
+  em paralelo, não bloqueia o fluxo
 ```
+
+Ver [QC de reads](#qc-de-reads-raw-vs-trimmed) para detalhes de onde cada relatório é gerado.
 
 ### Ferramentas utilizadas
 
 | Etapa | Ferramenta | Função |
 |---|---|---|
+| QC long reads (raw/trimmed) | NanoStat | Estatísticas antes e depois do NanoFilt |
+| QC long reads (comparativo) | NanoComp | HTML comparativo raw-vs-trimmed por amostra |
 | Filtragem long reads | NanoFilt | Q-score ≥ 10, comprimento ≥ 500 bp |
+| QC short reads (raw/trimmed) | FastQC | Relatório antes e depois do FASTP |
 | Filtragem short reads | FASTP | Q ≥ 20, comprimento ≥ 50 bp |
 | Downsampling | SeqKit | Limitar número de reads (opcional) |
 | Montagem (long reads) | Flye | Montagem *de novo* a partir de long reads, com polishing híbrido |
@@ -98,11 +110,11 @@ nextflow run bacflow.nf ...
 ```bash
 # verificar ambientes instalados
 mamba env list | grep bacflow
-# bacflow-tools   ~/.conda/envs/bacflow-tools
-# bacflow-medaka  ~/.conda/envs/bacflow-medaka
+# bacflow-tools   ~/miniforge3/envs/bacflow-tools
+# bacflow-medaka  ~/miniforge3/envs/bacflow-medaka
 ```
 
-> **Importante:** os módulos referenciam os ambientes pelo **nome fixo** (`bacflow-tools` / `bacflow-medaka`), não pelo caminho do YAML. A pré-instalação é obrigatória antes da primeira execução.
+> **Importante:** os módulos referenciam os ambientes pelo **caminho absoluto** (`$HOME/miniforge3/envs/bacflow-tools` / `bacflow-medaka`), assumindo a instalação padrão do Miniforge/Mambaforge no `$HOME` do usuário — não pelo nome nem pelo caminho do YAML (referenciar só pelo nome faz o Nextflow tentar *instalar um pacote* com esse nome do bioconda, em vez de reaproveitar o ambiente já criado). Se seu Conda/Mamba estiver instalado em outro local, ajuste o `conda` directive em cada `modules/local/*.nf`. A pré-instalação é obrigatória antes da primeira execução.
 
 ---
 
@@ -110,10 +122,12 @@ mamba env list | grep bacflow
 
 | Ambiente | YAML | Ferramentas |
 |---|---|---|
-| `bacflow-tools` | `envs/tools.yaml` | nextflow, nanofilt, fastp, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc, nanostat |
-| `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
+| `bacflow-tools` | `envs/tools.yaml` | nextflow=26.04.6, nanofilt, nanostat, fastp, fastqc=0.12.1, nanocomp=1.25.6, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc |
+| `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3, setuptools=69.5.1 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
 
-O Medaka é mantido em ambiente isolado obrigatoriamente, pois suas dependências (TensorFlow, ONNX) conflitam com pacotes do canal bioconda.
+O Medaka é mantido em ambiente isolado obrigatoriamente, pois suas dependências (TensorFlow, ONNX) conflitam com pacotes do canal bioconda. O pin de `setuptools=69.5.1` é necessário porque versões mais recentes removeram o módulo `pkg_resources`, do qual o `medaka=1.11.3` depende.
+
+> `NanoComp` vem do pacote bioconda **`nanocomp`**, não `nanoplot` (que fornece o `NanoPlot`, uma ferramenta diferente — relatório detalhado de 1 dataset, sem comparação).
 
 ---
 
@@ -241,6 +255,21 @@ amostra03,,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,
 | `--min_length` | `500` | Comprimento mínimo de reads NanoFilt (bp) |
 | `--downsample` | `0` | Máx de reads para montagem (`0` = sem limite; ex: `200000` para economizar RAM) |
 | `--outdir` | `results` | Diretório de saída |
+
+---
+
+## QC de reads (raw vs. trimmed)
+
+Roda **automaticamente em todo run**, independente de qual dos 7 fluxos ou modo (`denovo`/`reference`) está em uso — não é controlado por flag, não bloqueia a montagem (executa em paralelo) e não é opcional.
+
+| Tipo de read | Antes do filtro | Ferramenta | Depois do filtro | Onde comparar |
+|---|---|---|---|---|
+| Long reads | `NANOSTAT_RAW` sobre o FASTQ original | NanoFilt (Q/comprimento) | `NANOSTAT_TRIMMED` sobre `lr.filtered` | `NANOCOMP` — HTML único com os dois lado a lado |
+| Short reads | `FASTQC_RAW` sobre R1/R2 originais | FASTP (trim + filtro) | `FASTQC_TRIMMED` sobre R1/R2 limpos | Abrir os dois HTMLs do FastQC lado a lado |
+
+- NanoStat/NanoComp usam os long reads **antes do `--downsample`** — downsample é redução de amostragem, não mudança de qualidade, então fica fora dessa comparação (mas o NanoFilt/filtro de qualidade já é capturado).
+- Amostras short-read-only (sem `long_reads`) só geram QC de short reads (FastQC); amostras híbridas ou long-only geram os dois.
+- Nenhum parâmetro novo — os thresholds usados no relatório "trimmed" são os mesmos de `--min_quality`/`--min_length` (NanoFilt) e os fixos do FASTP (Q≥20, comprimento≥50bp).
 
 ---
 
@@ -428,11 +457,11 @@ O parâmetro `--t` define o total de CPUs desejadas. O pipeline distribui automa
 
 | Nível | Processos | CPUs |
 |---|---|---|
-| `process_low` | NanoFilt, FASTP, QUAST | `t / 4` |
+| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST | `t / 4` |
 | `process_medium` | Racon, Medaka, Polypolish, NextPolish | `t / 2` |
 | `process_high` | Flye, Unicycler | `t` (todos) |
 
-Exemplo com `--t 32`: NanoFilt + FASTP rodam em paralelo (8 + 8 CPUs), Flye/Unicycler usa todas as 32.
+Exemplo com `--t 32`: NanoFilt + FASTP + os QC (FastQC/NanoStat/NanoComp) rodam em paralelo (8 CPUs cada), Flye/Unicycler usa todas as 32.
 
 `--t` escala pra qualquer servidor (`--t 100`, `--t 256` etc.), mas é **automaticamente limitado aos cores reais da máquina** (`Runtime.availableProcessors()`, detectado em tempo de execução no `nextflow.config`). Se você passar `--t 100` num servidor com apenas 32 CPUs, o pipeline usa no máximo 32 e emite um aviso no log — não ultrapassa o hardware disponível.
 
@@ -474,7 +503,10 @@ bacflow/
 │   └── medaka.yaml           # → bacflow-medaka (isolada)
 └── modules/local/
     ├── nanofilt.nf
+    ├── nanostat.nf        # NANOSTAT_RAW + NANOSTAT_TRIMMED
+    ├── nanocomp.nf        # comparativo raw-vs-trimmed (long reads)
     ├── fastp.nf
+    ├── fastqc.nf          # FASTQC_RAW + FASTQC_TRIMMED
     ├── seqkit_downsample.nf
     ├── flye.nf
     ├── unicycler.nf
@@ -487,6 +519,33 @@ bacflow/
 
 ---
 
+## Estrutura de resultados
+
+```
+results/{sample}/
+├── qc/
+│   ├── nanostat_raw/       {sample}.nanostat_raw.txt
+│   ├── nanofilt/           {sample}.filtered.fastq.gz
+│   ├── nanostat_trimmed/   {sample}.nanostat_trimmed.txt
+│   ├── nanocomp/           NanoComp-report.html, NanoStats.txt
+│   ├── fastqc_raw/         *_fastqc.html, *_fastqc.zip
+│   ├── fastp/              {sample}.fastp.html/.json, *.clean.fastq.gz
+│   ├── fastqc_trimmed/     *_fastqc.html, *_fastqc.zip
+│   └── quast/quast_output/ report.html, report.tsv, icarus.html, ...
+├── assembly/
+│   ├── flye/               {sample}.assembly.fasta (+ flye_output/assembly_info.txt)
+│   └── unicycler/          {sample}.assembly.fasta (caminho short-only)
+└── polishing/
+    ├── racon/               {sample}.racon.fasta (opcional)
+    ├── medaka/              {sample}.medaka.fasta
+    ├── polypolish/          {sample}.polypolish.fasta (padrão)
+    └── nextpolish/          {sample}.nextpolish.fasta (alternativa, --polisher nextpolish)
+```
+
+Estrutura validada com execução real de ponta a ponta (dados sintéticos) em 18/07/2026.
+
+---
+
 ## Regras importantes
 
 | Regra | Motivo |
@@ -494,7 +553,8 @@ bacflow/
 | **Nunca** rodar Racon após Medaka | Racon reintroduz erros que o Medaka já corrigiu |
 | **Nunca** rodar Polypolish após NextPolish | Degrada a qualidade — a ordem importa |
 | **Sempre** manter Medaka em ambiente isolado | TensorFlow/ONNX conflita com pacotes bioconda |
-| **Sempre** pré-instalar os envs antes de rodar | Módulos referenciam pelo nome, não pelo YAML |
+| **Sempre** pré-instalar os envs antes de rodar | Módulos referenciam por caminho absoluto (`$HOME/miniforge3/envs/...`), não pelo YAML nem por nome |
+| Ambientes conda assumem Miniforge/Mambaforge instalado em `$HOME/miniforge3/` | Referenciar só pelo nome faz o Nextflow tentar *instalar* um pacote bioconda com esse nome em vez de reaproveitar o ambiente local — ajustar o `conda` directive nos módulos se usar outro local de instalação |
 | Amostras short-only (Unicycler) **nunca** passam por Polypolish/NextPolish | Unicycler já incorpora os short reads na montagem — polish adicional seria redundante |
 | Usar `-resume` sempre que possível | Retoma do ponto onde parou sem reprocessar etapas concluídas |
 
