@@ -3,7 +3,7 @@
 process NANOFILT {
     tag { sample }
     label 'process_low'
-    conda 'bacflow-tools'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/nanofilt" }, mode: 'copy'
 
     input:

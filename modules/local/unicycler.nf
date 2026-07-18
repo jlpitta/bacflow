@@ -3,7 +3,7 @@
 process UNICYCLER {
     tag { sample }
     label 'process_high'
-    conda 'bacflow-tools'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/assembly/unicycler" }, mode: 'copy'
 
     input:

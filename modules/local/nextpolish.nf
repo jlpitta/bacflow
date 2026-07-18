@@ -3,7 +3,7 @@
 process NEXTPOLISH {
     tag { sample }
     label 'process_medium'
-    conda 'bacflow-tools'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/polishing/nextpolish" }, mode: 'copy'
 
     input:

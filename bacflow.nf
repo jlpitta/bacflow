@@ -9,6 +9,9 @@ nextflow.enable.dsl = 2
 include { NANOFILT          } from './modules/local/nanofilt'
 include { SEQKIT_DOWNSAMPLE } from './modules/local/seqkit_downsample'
 include { FASTP             } from './modules/local/fastp'
+include { FASTQC_RAW; FASTQC_TRIMMED } from './modules/local/fastqc'
+include { NANOSTAT_RAW; NANOSTAT_TRIMMED } from './modules/local/nanostat'
+include { NANOCOMP          } from './modules/local/nanocomp'
 include { FLYE              } from './modules/local/flye'
 include { UNICYCLER         } from './modules/local/unicycler'
 include { RACON             } from './modules/local/racon'
@@ -183,14 +186,22 @@ workflow {
     NANOFILT(ch_lr)
     def ch_lr_filtered = NANOFILT.out.reads
 
+    // raw-vs-trimmed long-read QC, captured before downsampling (downsample is a
+    // sampling reduction, not a quality change — not part of this comparison)
+    NANOSTAT_RAW(ch_lr)
+    NANOSTAT_TRIMMED(ch_lr_filtered)
+    NANOCOMP(ch_lr.join(ch_lr_filtered))
+
     if (params.downsample > 0) {
         SEQKIT_DOWNSAMPLE(ch_lr_filtered)
         ch_lr_filtered = SEQKIT_DOWNSAMPLE.out.reads
     }
 
     // ── short-read QC (any sample with short reads: hybrid polishing or short-only assembly) ──
+    FASTQC_RAW(ch_sr)
     FASTP(ch_sr)
     def ch_sr_clean = FASTP.out.reads
+    FASTQC_TRIMMED(ch_sr_clean)
 
     // ── reference channel for QUAST ──────────────────────────────────────────
     def ch_reference

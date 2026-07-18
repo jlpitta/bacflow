@@ -3,7 +3,7 @@
 process POLYPOLISH {
     tag { sample }
     label 'process_medium'
-    conda 'bacflow-tools'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/polishing/polypolish" }, mode: 'copy'
 
     input:

@@ -3,7 +3,7 @@
 process MEDAKA {
     tag { sample }
     label 'process_medium'
-    conda 'bacflow-medaka'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-medaka"
     publishDir { "${params.outdir}/${sample}/polishing/medaka" }, mode: 'copy'
 
     input:

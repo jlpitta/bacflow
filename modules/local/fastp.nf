@@ -3,7 +3,7 @@
 process FASTP {
     tag { sample }
     label 'process_low'
-    conda 'bacflow-tools'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastp" }, mode: 'copy'
 
     input:
