@@ -18,7 +18,7 @@ include { RACON             } from './modules/local/racon'
 include { MEDAKA            } from './modules/local/medaka'
 include { POLYPOLISH        } from './modules/local/polypolish'
 include { NEXTPOLISH        } from './modules/local/nextpolish'
-include { QUAST             } from './modules/local/quast'
+include { QUAST; QUAST_PREPOLISH; QUAST_POSTPOLISH } from './modules/local/quast'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -232,11 +232,20 @@ workflow {
             ch_draft_flye = MEDAKA.out.assembly
         }
 
+        // QC de montagem pré-polish — logo após Racon/Medaka, antes do polimento
+        // com short reads (compara com QUAST_POSTPOLISH mais abaixo)
+        QUAST_PREPOLISH(ch_draft_flye, ch_reference)
+
         // short-read polishing — only for flye_path samples that actually have
         // short reads. join(remainder:true) + branch + mix so that samples
         // without short reads pass through untouched instead of being silently
         // dropped by a plain inner join() (previous behavior; see README history).
+        // remainder:true also emits entries from ch_sr_clean with no match in
+        // ch_draft_flye (asm=null) — e.g. unicycler_path (short-only) samples,
+        // which have no Flye assembly at all — so those need filtering out here
+        // instead of leaking into POLYPOLISH/NEXTPOLISH with a null path.
         def ch_flye_joined = ch_draft_flye.join(ch_sr_clean, remainder: true)
+            .filter { s, asm, r1, r2 -> asm != null }
         def polish_branch = ch_flye_joined.branch { s, asm, r1, r2 ->
             to_polish:   r1 != null && params.polisher != 'none'
             passthrough: !(r1 != null && params.polisher != 'none')
@@ -255,16 +264,21 @@ workflow {
             ch_draft_flye_final = ch_draft_flye
         }
 
+        // QC de montagem pós-polish — mesmo caminho do QUAST_PREPOLISH acima,
+        // após Polypolish/NextPolish (ou inalterado, se a amostra não tinha
+        // short reads ou --polisher none — nesse caso pré e pós ficam idênticos,
+        // o que é a informação correta: nenhum polimento foi aplicado)
+        QUAST_POSTPOLISH(ch_draft_flye_final, ch_reference)
+
         // ── Unicycler path (short-read-only samples) ────────────────────────────
         def ch_uni_input = branched.unicycler_path
             .map { s, lr, r1, r2, gs -> tuple(s) }
             .join(ch_sr_clean)
         UNICYCLER(ch_uni_input)
         def ch_draft_uni = UNICYCLER.out.assembly
-        // never polished further — Unicycler already incorporates the short reads
-
-        def ch_draft = ch_draft_flye_final.mix(ch_draft_uni)
-        QUAST(ch_draft, ch_reference)
+        // never polished further — Unicycler already incorporates the short reads,
+        // então não há estado "pré-polish" real pra comparar — QUAST único, como antes
+        QUAST(ch_draft_uni, ch_reference)
 
     // ─────────────────────────────────────────────────────────────────────────
     // REFERENCE MODE
@@ -283,6 +297,10 @@ workflow {
         MEDAKA(ch_medaka_input, medaka_model)
         def ch_draft = MEDAKA.out.assembly
 
+        // QC de montagem pré-polish — logo após o Medaka, antes do polimento
+        // com short reads (compara com QUAST_POSTPOLISH mais abaixo)
+        QUAST_PREPOLISH(ch_draft, ch_reference)
+
         if (params.polisher == 'polypolish') {
             POLYPOLISH(ch_draft.join(ch_sr_clean))
             ch_draft = POLYPOLISH.out.assembly
@@ -291,7 +309,10 @@ workflow {
             ch_draft = NEXTPOLISH.out.assembly
         }
 
-        QUAST(ch_draft, ch_reference)
+        // QC de montagem pós-polish — idêntico ao pré-polish se nenhum polimento
+        // foi aplicado (--polisher none ou sem short reads), o que é a informação
+        // correta nesse caso
+        QUAST_POSTPOLISH(ch_draft, ch_reference)
 
     } else {
         error "Unknown --mode '${params.mode}'. Use 'denovo' or 'reference'."

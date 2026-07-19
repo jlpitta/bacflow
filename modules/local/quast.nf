@@ -23,3 +23,51 @@ process QUAST {
         --threads ${task.cpus}
     """
 }
+
+process QUAST_PREPOLISH {
+    tag { sample }
+    label 'process_low'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    publishDir { "${params.outdir}/${sample}/qc/quast_prepolish" }, mode: 'copy'
+
+    input:
+    tuple val(sample), path(assembly)
+    path reference
+
+    output:
+    path "quast_output", emit: report
+
+    script:
+    def ref_arg = reference ? "--reference ${reference}" : ""
+    """
+    quast.py \
+        ${assembly} \
+        ${ref_arg} \
+        --output-dir quast_output \
+        --threads ${task.cpus}
+    """
+}
+
+process QUAST_POSTPOLISH {
+    tag { sample }
+    label 'process_low'
+    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    publishDir { "${params.outdir}/${sample}/qc/quast_postpolish" }, mode: 'copy'
+
+    input:
+    tuple val(sample), path(assembly)
+    path reference
+
+    output:
+    path "quast_output", emit: report
+
+    script:
+    def ref_arg = reference ? "--reference ${reference}" : ""
+    """
+    quast.py \
+        ${assembly} \
+        ${ref_arg} \
+        --output-dir quast_output \
+        --threads ${task.cpus}
+    """
+}
