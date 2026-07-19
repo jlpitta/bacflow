@@ -34,21 +34,25 @@ long-only e short-only.
 ```
 Amostra tem long_reads?
 │
-├── SIM ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opc.) ──► [Medaka] ──┐
+├── SIM ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opc.) ──► [Medaka] ──► [QUAST³ pré-polish]
 │                                                                    │
 │           Short reads (se houver) ─► FASTP² ─► [Polypolish] ou [NextPolish] (opc.)
 │                                                                    │
-└── NÃO ──► Short reads ─► FASTP² ─► [Unicycler] ────────────────────┤
-            (short-read-only, sem Racon/Medaka/polish adicional)    │
-                                                                     ▼
-                                                                [QUAST]
-                                                                     │
-                                                            relatório de qualidade
+│                                                                    ▼
+│                                                          [QUAST³ pós-polish]
+│
+└── NÃO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST]
+            (short-read-only, sem Racon/Medaka/polish adicional,
+             sem estado "pré-polish" real — QUAST único, como sempre)
 
 ¹ NanoFilt é bracketado por QC raw-vs-trimmed: NanoStat (antes/depois) + NanoComp
   (comparativo HTML) — roda sempre em paralelo, não bloqueia o fluxo
 ² FASTP é bracketado por QC raw-vs-trimmed: FastQC (antes/depois) — roda sempre
   em paralelo, não bloqueia o fluxo
+³ QUAST roda 2x no caminho Flye (denovo e reference): logo após Racon/Medaka
+  (quast_prepolish/) e de novo após Polypolish/NextPolish (quast_postpolish/) —
+  se nenhum polish foi aplicado (sem short reads ou --polisher none), os dois
+  relatórios saem idênticos, o que é a informação correta nesse caso
 ```
 
 Ver [QC de reads](#qc-de-reads-raw-vs-trimmed) para detalhes de onde cada relatório é gerado.
@@ -67,9 +71,10 @@ Ver [QC de reads](#qc-de-reads-raw-vs-trimmed) para detalhes de onde cada relat�
 | Montagem (short-read-only) | Unicycler | Montagem *de novo* só com Illumina (baseado em SPAdes), quando não há long reads |
 | Polishing long reads | Racon | Polishing rápido pré-Medaka (opcional, só no caminho Flye) |
 | Polishing long reads | Medaka 1.11.3 | Correção de erros com modelo de rede neural (só no caminho Flye) |
+| Avaliação (pré-polish) | QUAST | Métricas da montagem logo após Racon/Medaka (só caminho Flye — `qc/quast_prepolish/`) |
 | Polishing short reads | **Polypolish** (padrão) | Correção final com Illumina, base a base (só no caminho Flye) |
 | Polishing short reads | NextPolish (alternativa) | Correção multi-round com Illumina, `--polisher nextpolish` (só no caminho Flye) |
-| Avaliação | QUAST | Métricas de qualidade da montagem |
+| Avaliação (pós-polish) | QUAST | Métricas da montagem final — pós-polish no caminho Flye (`qc/quast_postpolish/`), única chamada no caminho Unicycler (`qc/quast/`) |
 
 ---
 
@@ -202,7 +207,7 @@ amostra02,data/A02/lr.fastq.gz,,,4.8m
 amostra03,data/A03/lr.fastq.gz,,,5m
 ```
 
-Amostras sem `short_reads_1/2` seguem o fluxo Flye → Medaka → QUAST, independente do `--polisher` configurado.
+Amostras sem `short_reads_1/2` seguem o fluxo Flye → Medaka → QUAST pré-polish → QUAST pós-polish (idêntico ao pré, já que não há polish pra aplicar), independente do `--polisher` configurado.
 
 **Exemplo 2 — long reads + short reads (com Polypolish por padrão):**
 
@@ -222,9 +227,9 @@ amostra02,data/A02/lr.fastq.gz,,,4.8m
 amostra03,,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,
 ```
 
-- `amostra01` (long + short): Flye → Medaka → Polypolish → QUAST
-- `amostra02` (só long): Flye → Medaka → QUAST, sem polish (nenhuma amostra é derrubada silenciosamente do resultado por não ter short reads)
-- `amostra03` (só short): Unicycler → QUAST direto, sem NanoFilt/Racon/Medaka/polish; `genome_size` pode ficar vazio, já que só o Flye usa esse parâmetro
+- `amostra01` (long + short): Flye → Medaka → QUAST pré-polish → Polypolish → QUAST pós-polish
+- `amostra02` (só long): Flye → Medaka → QUAST pré-polish → QUAST pós-polish (idêntico, sem polish — nenhuma amostra é derrubada silenciosamente do resultado por não ter short reads)
+- `amostra03` (só short): Unicycler → QUAST direto (chamada única), sem NanoFilt/Racon/Medaka/polish; `genome_size` pode ficar vazio, já que só o Flye usa esse parâmetro
 
 - Amostras processadas em **paralelo**, limitadas pelo `--t` global
 - `genome_size` pode ser coluna no CSV (por amostra) ou `--genome_size` como parâmetro global; só é exigido para amostras com `long_reads`
@@ -457,7 +462,7 @@ O parâmetro `--t` define o total de CPUs desejadas. O pipeline distribui automa
 
 | Nível | Processos | CPUs |
 |---|---|---|
-| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST | `t / 4` |
+| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST (+ pré/pós-polish) | `t / 4` |
 | `process_medium` | Racon, Medaka, Polypolish, NextPolish | `t / 2` |
 | `process_high` | Flye, Unicycler | `t` (todos) |
 
@@ -514,7 +519,7 @@ bacflow/
     ├── medaka.nf
     ├── polypolish.nf
     ├── nextpolish.nf
-    └── quast.nf
+    └── quast.nf           # QUAST + QUAST_PREPOLISH + QUAST_POSTPOLISH
 ```
 
 ---
@@ -524,14 +529,16 @@ bacflow/
 ```
 results/{sample}/
 ├── qc/
-│   ├── nanostat_raw/       {sample}.nanostat_raw.txt
-│   ├── nanofilt/           {sample}.filtered.fastq.gz
-│   ├── nanostat_trimmed/   {sample}.nanostat_trimmed.txt
-│   ├── nanocomp/           NanoComp-report.html, NanoStats.txt
-│   ├── fastqc_raw/         *_fastqc.html, *_fastqc.zip
-│   ├── fastp/              {sample}.fastp.html/.json, *.clean.fastq.gz
-│   ├── fastqc_trimmed/     *_fastqc.html, *_fastqc.zip
-│   └── quast/quast_output/ report.html, report.tsv, icarus.html, ...
+│   ├── nanostat_raw/               {sample}.nanostat_raw.txt
+│   ├── nanofilt/                   {sample}.filtered.fastq.gz
+│   ├── nanostat_trimmed/           {sample}.nanostat_trimmed.txt
+│   ├── nanocomp/                   NanoComp-report.html, NanoStats.txt
+│   ├── fastqc_raw/                 *_fastqc.html, *_fastqc.zip
+│   ├── fastp/                      {sample}.fastp.html/.json, *.clean.fastq.gz
+│   ├── fastqc_trimmed/             *_fastqc.html, *_fastqc.zip
+│   ├── quast_prepolish/quast_output/   report.html, report.tsv, ... (só caminho Flye, logo após Racon/Medaka)
+│   ├── quast_postpolish/quast_output/  report.html, report.tsv, ... (só caminho Flye, após Polypolish/NextPolish)
+│   └── quast/quast_output/         report.html, report.tsv, ... (só caminho Unicycler, chamada única)
 ├── assembly/
 │   ├── flye/               {sample}.assembly.fasta (+ flye_output/assembly_info.txt)
 │   └── unicycler/          {sample}.assembly.fasta (caminho short-only)
@@ -542,7 +549,9 @@ results/{sample}/
     └── nextpolish/          {sample}.nextpolish.fasta (alternativa, --polisher nextpolish)
 ```
 
-Estrutura validada com execução real de ponta a ponta (dados sintéticos) em 18/07/2026.
+Uma amostra só gera **um** dos três diretórios de QUAST: `quast_prepolish/`+`quast_postpolish/` se veio pelo caminho Flye (denovo ou reference), ou `quast/` sozinho se veio pelo caminho Unicycler.
+
+Estrutura validada com execução real de ponta a ponta (dados sintéticos) em 18–19/07/2026, nos 3 caminhos (denovo híbrido, reference, short-only).
 
 ---
 
