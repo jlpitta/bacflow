@@ -26,6 +26,18 @@ echo "==> Instalando bacflow-medaka..."
 ${PKG} env create -f "${SCRIPT_DIR}/envs/medaka.yaml" --yes || \
     ${PKG} env update -f "${SCRIPT_DIR}/envs/medaka.yaml" --prune
 
+echo "==> Instalando bacflow-checkm2..."
+${PKG} env create -f "${SCRIPT_DIR}/envs/checkm2.yaml" --yes || \
+    ${PKG} env update -f "${SCRIPT_DIR}/envs/checkm2.yaml" --prune
+
+CHECKM2_DB="${HOME}/checkm2_db/CheckM2_database/uniref100.KO.1.dmnd"
+if [ -f "${CHECKM2_DB}" ]; then
+    echo "==> Banco de dados do CheckM2 já presente em ${CHECKM2_DB}, pulando download."
+else
+    echo "==> Baixando banco de dados do CheckM2 (~1.7 GB, uma vez só)..."
+    ${PKG} run -n bacflow-checkm2 checkm2 database --download --path "${HOME}/checkm2_db"
+fi
+
 echo ""
 echo "Ambientes instalados:"
 ${PKG} env list | grep -E 'bacflow'

@@ -20,6 +20,7 @@ include { POLYPOLISH        } from './modules/local/polypolish'
 include { NEXTPOLISH        } from './modules/local/nextpolish'
 include { QUAST; QUAST_PREPOLISH; QUAST_POSTPOLISH } from './modules/local/quast'
 include { BUSCO; BUSCO_PREPOLISH; BUSCO_POSTPOLISH } from './modules/local/busco'
+include { CHECKM2; CHECKM2_PREPOLISH; CHECKM2_POSTPOLISH } from './modules/local/checkm2'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ def help_message() {
                                In denovo mode, when omitted, BUSCO pre/post-polish runs instead
                                of reference-based QUAST comparison (gene completeness signal)
       --busco_lineage NAME    BUSCO lineage dataset [default: bacteria_odb10] (only used when --reference is not set)
+      --checkm2_db PATH       Path to CheckM2 DIAMOND database [default: ~/checkm2_db/CheckM2_database/uniref100.KO.1.dmnd]
+                               CheckM2 (completeness + contamination) always runs, regardless of --reference
 
     Assembler (automatic, no flag):
       Samples with --long_reads are assembled with Flye.
@@ -247,6 +250,12 @@ workflow {
             BUSCO_PREPOLISH(ch_draft_flye)
         }
 
+        // CheckM2 roda sempre, com ou sem --reference: mede completude E
+        // contaminação — a contaminação é uma dimensão que nem QUAST nem BUSCO
+        // cobrem, então vale a pena mesmo quando a montagem já está bem avaliada
+        // pelos outros dois
+        CHECKM2_PREPOLISH(ch_draft_flye)
+
         // short-read polishing — only for flye_path samples that actually have
         // short reads. join(remainder:true) + branch + mix so that samples
         // without short reads pass through untouched instead of being silently
@@ -285,6 +294,8 @@ workflow {
             BUSCO_POSTPOLISH(ch_draft_flye_final)
         }
 
+        CHECKM2_POSTPOLISH(ch_draft_flye_final)
+
         // ── Unicycler path (short-read-only samples) ────────────────────────────
         def ch_uni_input = branched.unicycler_path
             .map { s, lr, r1, r2, gs -> tuple(s) }
@@ -299,6 +310,9 @@ workflow {
         if (!params.reference) {
             BUSCO(ch_draft_uni)
         }
+
+        // CheckM2 roda sempre, chamada única (sem antes/depois), como o QUAST único
+        CHECKM2(ch_draft_uni)
 
     // ─────────────────────────────────────────────────────────────────────────
     // REFERENCE MODE
@@ -321,6 +335,11 @@ workflow {
         // com short reads (compara com QUAST_POSTPOLISH mais abaixo)
         QUAST_PREPOLISH(ch_draft, ch_reference)
 
+        // CheckM2 roda sempre (não é condicionado a --reference como o BUSCO —
+        // modo reference sempre tem --reference, mas CheckM2 mede contaminação,
+        // uma dimensão que o QUAST baseado em referência não cobre)
+        CHECKM2_PREPOLISH(ch_draft)
+
         if (params.polisher == 'polypolish') {
             POLYPOLISH(ch_draft.join(ch_sr_clean))
             ch_draft = POLYPOLISH.out.assembly
@@ -333,6 +352,8 @@ workflow {
         // foi aplicado (--polisher none ou sem short reads), o que é a informação
         // correta nesse caso
         QUAST_POSTPOLISH(ch_draft, ch_reference)
+
+        CHECKM2_POSTPOLISH(ch_draft)
 
     } else {
         error "Unknown --mode '${params.mode}'. Use 'denovo' or 'reference'."
