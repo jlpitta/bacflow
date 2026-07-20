@@ -15,7 +15,7 @@ dependencies:
   - nextpolish=1.4.1
   - bwa=0.7.17
   - quast=5.2.0
-  - multiqc=1.21
+  - multiqc=1.35
   - fastp=0.23.4
   - polypolish=0.6.0
   - nextflow=26.04.6

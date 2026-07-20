@@ -21,6 +21,7 @@ include { NEXTPOLISH        } from './modules/local/nextpolish'
 include { QUAST; QUAST_PREPOLISH; QUAST_POSTPOLISH } from './modules/local/quast'
 include { BUSCO; BUSCO_PREPOLISH; BUSCO_POSTPOLISH } from './modules/local/busco'
 include { CHECKM2; CHECKM2_PREPOLISH; CHECKM2_POSTPOLISH } from './modules/local/checkm2'
+include { MULTIQC } from './modules/local/multiqc'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -218,6 +219,15 @@ workflow {
         ch_reference = Channel.value([])
     }
 
+    // ── MultiQC — files fed into the final aggregator (FastQC, NanoStat, QUAST,
+    // CheckM2; BUSCO and NanoComp are deliberately excluded, see multiqc.nf) ────
+    def outdir_abs = file(params.outdir).toAbsolutePath().toString()
+    def ch_multiqc_files = Channel.empty()
+        .mix(FASTQC_RAW.out.reports)
+        .mix(FASTQC_TRIMMED.out.reports)
+        .mix(NANOSTAT_RAW.out.report)
+        .mix(NANOSTAT_TRIMMED.out.report)
+
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
     // ─────────────────────────────────────────────────────────────────────────
@@ -255,6 +265,7 @@ workflow {
         // cobrem, então vale a pena mesmo quando a montagem já está bem avaliada
         // pelos outros dois
         CHECKM2_PREPOLISH(ch_draft_flye)
+        ch_multiqc_files = ch_multiqc_files.mix(QUAST_PREPOLISH.out.report, CHECKM2_PREPOLISH.out.report)
 
         // short-read polishing — only for flye_path samples that actually have
         // short reads. join(remainder:true) + branch + mix so that samples
@@ -295,6 +306,7 @@ workflow {
         }
 
         CHECKM2_POSTPOLISH(ch_draft_flye_final)
+        ch_multiqc_files = ch_multiqc_files.mix(QUAST_POSTPOLISH.out.report, CHECKM2_POSTPOLISH.out.report)
 
         // ── Unicycler path (short-read-only samples) ────────────────────────────
         def ch_uni_input = branched.unicycler_path
@@ -313,6 +325,7 @@ workflow {
 
         // CheckM2 roda sempre, chamada única (sem antes/depois), como o QUAST único
         CHECKM2(ch_draft_uni)
+        ch_multiqc_files = ch_multiqc_files.mix(QUAST.out.report, CHECKM2.out.report)
 
     // ─────────────────────────────────────────────────────────────────────────
     // REFERENCE MODE
@@ -339,6 +352,7 @@ workflow {
         // modo reference sempre tem --reference, mas CheckM2 mede contaminação,
         // uma dimensão que o QUAST baseado em referência não cobre)
         CHECKM2_PREPOLISH(ch_draft)
+        ch_multiqc_files = ch_multiqc_files.mix(QUAST_PREPOLISH.out.report, CHECKM2_PREPOLISH.out.report)
 
         if (params.polisher == 'polypolish') {
             POLYPOLISH(ch_draft.join(ch_sr_clean))
@@ -354,8 +368,11 @@ workflow {
         QUAST_POSTPOLISH(ch_draft, ch_reference)
 
         CHECKM2_POSTPOLISH(ch_draft)
+        ch_multiqc_files = ch_multiqc_files.mix(QUAST_POSTPOLISH.out.report, CHECKM2_POSTPOLISH.out.report)
 
     } else {
         error "Unknown --mode '${params.mode}'. Use 'denovo' or 'reference'."
     }
+
+    MULTIQC(ch_multiqc_files.collect(), outdir_abs)
 }

@@ -15,6 +15,7 @@ Pipeline [Nextflow](https://www.nextflow.io/) DSL2 para **montagem de genomas**,
 - [Modos de input](#modos-de-input)
 - [Parâmetros](#parâmetros)
 - [QC de reads (raw vs. trimmed)](#qc-de-reads-raw-vs-trimmed)
+- [Agregação (MultiQC)](#agregação-multiqc)
 - [Os 7 fluxos de execução](#os-7-fluxos-de-execução)
 - [Controle de CPUs](#controle-de-cpus)
 - [Profiles (gerenciador de pacotes)](#profiles-gerenciador-de-pacotes)
@@ -86,6 +87,7 @@ Ver [QC de reads](#qc-de-reads-raw-vs-trimmed) para detalhes de onde cada relat�
 | Avaliação (pós-polish) | QUAST | Métricas da montagem final — pós-polish no caminho Flye (`qc/quast_postpolish/`), única chamada no caminho Unicycler (`qc/quast/`) |
 | Avaliação (pós-polish, sem referência) | BUSCO | Completude gênica final — pós-polish no caminho Flye (`qc/busco_postpolish/`), única chamada no caminho Unicycler (`qc/busco/`) — só sem `--reference` |
 | Avaliação (pós-polish, sempre) | CheckM2 | Completude + contaminação final — pós-polish no caminho Flye (`qc/checkm2_postpolish/`), única chamada no caminho Unicycler (`qc/checkm2/`) |
+| Agregação (fim do run) | MultiQC | Relatório único juntando FastQC, NanoStat, QUAST e CheckM2 de todas as amostras (`multiqc/`) |
 
 ---
 
@@ -139,7 +141,7 @@ mamba env list | grep bacflow
 
 | Ambiente | YAML | Ferramentas |
 |---|---|---|
-| `bacflow-tools` | `envs/tools.yaml` | nextflow=26.04.6, nanofilt, nanostat, fastp, fastqc=0.12.1, nanocomp=1.25.6, busco=6.1.0, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc |
+| `bacflow-tools` | `envs/tools.yaml` | nextflow=26.04.6, nanofilt, nanostat, fastp, fastqc=0.12.1, nanocomp=1.25.6, busco=6.1.0, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc=1.35 |
 | `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3, setuptools=69.5.1 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
 | `bacflow-checkm2` | `envs/checkm2.yaml` | checkm2=1.1.0 (**isolada** — conflito real de dependências com `bacflow-tools`, descoberto na prática) |
 
@@ -292,6 +294,17 @@ Roda **automaticamente em todo run**, independente de qual dos 7 fluxos ou modo 
 - NanoStat/NanoComp usam os long reads **antes do `--downsample`** — downsample é redução de amostragem, não mudança de qualidade, então fica fora dessa comparação (mas o NanoFilt/filtro de qualidade já é capturado).
 - Amostras short-read-only (sem `long_reads`) só geram QC de short reads (FastQC); amostras híbridas ou long-only geram os dois.
 - Nenhum parâmetro novo — os thresholds usados no relatório "trimmed" são os mesmos de `--min_quality`/`--min_length` (NanoFilt) e os fixos do FASTP (Q≥20, comprimento≥50bp).
+
+---
+
+## Agregação (MultiQC)
+
+Roda **uma única vez ao final do run**, depois de todas as amostras — diferente do resto do QC (que é por amostra), o `MULTIQC` é o único process de escopo do run inteiro. Saída em `results/multiqc/` (não `results/{sample}/multiqc/`).
+
+Junta num único relatório HTML: **FastQC** (raw/trimmed), **NanoStat** (raw/trimmed), **QUAST** (pré/pós-polish) e **CheckM2** (pré/pós-polish) de todas as amostras, lado a lado. **BUSCO e NanoComp ficam de fora de propósito** — BUSCO porque sua completude gênica já é melhor lida por amostra (e não é uma métrica que se preste a agregação simples entre amostras diferentes); NanoComp porque não tem parser nativo no MultiQC (já é um HTML comparativo individual, ver seção de QC acima).
+
+- Amostras são disambiguadas pelo nome da subpasta em `results/{sample}/` (via `multiqc --dirs --dirs-depth -2` sobre um symlink interno de profundidade fixa) — necessário porque ferramentas como FastQC nomeiam a saída a partir do nome do arquivo de entrada, não da amostra, e duas amostras podem usar arquivos com nomes idênticos (ex: `R1.fastq.gz` genérico).
+- Pin em `envs/tools.yaml` atualizado de `multiqc=1.21` para `multiqc=1.35` — a 1.21 não tinha módulo nativo para CheckM2 (confirmado testando `config.avail_modules`); a 1.35 tem.
 
 ---
 
@@ -573,32 +586,34 @@ bacflow/
 ## Estrutura de resultados
 
 ```
-results/{sample}/
-├── qc/
-│   ├── nanostat_raw/               {sample}.nanostat_raw.txt
-│   ├── nanofilt/                   {sample}.filtered.fastq.gz
-│   ├── nanostat_trimmed/           {sample}.nanostat_trimmed.txt
-│   ├── nanocomp/                   NanoComp-report.html, NanoStats.txt
-│   ├── fastqc_raw/                 *_fastqc.html, *_fastqc.zip
-│   ├── fastp/                      {sample}.fastp.html/.json, *.clean.fastq.gz
-│   ├── fastqc_trimmed/             *_fastqc.html, *_fastqc.zip
-│   ├── quast_prepolish/quast_output/   report.html, report.tsv, ... (só caminho Flye, logo após Racon/Medaka)
-│   ├── quast_postpolish/quast_output/  report.html, report.tsv, ... (só caminho Flye, após Polypolish/NextPolish)
-│   ├── quast/quast_output/         report.html, report.tsv, ... (só caminho Unicycler, chamada única)
-│   ├── busco_prepolish/busco_output/   short_summary.txt, full_table.tsv, ... (só caminho Flye, sem --reference)
-│   ├── busco_postpolish/busco_output/  short_summary.txt, full_table.tsv, ... (só caminho Flye, sem --reference)
-│   ├── busco/busco_output/         short_summary.txt, full_table.tsv, ... (só caminho Unicycler, sem --reference)
-│   ├── checkm2_prepolish/checkm2_output/   quality_report.tsv, ... (só caminho Flye, sempre)
-│   ├── checkm2_postpolish/checkm2_output/  quality_report.tsv, ... (só caminho Flye, sempre)
-│   └── checkm2/checkm2_output/     quality_report.tsv, ... (só caminho Unicycler, sempre)
-├── assembly/
-│   ├── flye/               {sample}.assembly.fasta (+ flye_output/assembly_info.txt)
-│   └── unicycler/          {sample}.assembly.fasta (caminho short-only)
-└── polishing/
-    ├── racon/               {sample}.racon.fasta (opcional)
-    ├── medaka/              {sample}.medaka.fasta
-    ├── polypolish/          {sample}.polypolish.fasta (padrão)
-    └── nextpolish/          {sample}.nextpolish.fasta (alternativa, --polisher nextpolish)
+results/
+├── multiqc/                              multiqc_report.html, multiqc_data/ (run inteiro, todas as amostras)
+└── {sample}/
+    ├── qc/
+    │   ├── nanostat_raw/                     {sample}.nanostat_raw.txt
+    │   ├── nanofilt/                         {sample}.filtered.fastq.gz
+    │   ├── nanostat_trimmed/                 {sample}.nanostat_trimmed.txt
+    │   ├── nanocomp/                         NanoComp-report.html, NanoStats.txt
+    │   ├── fastqc_raw/                       *_fastqc.html, *_fastqc.zip
+    │   ├── fastp/                            {sample}.fastp.html/.json, *.clean.fastq.gz
+    │   ├── fastqc_trimmed/                   *_fastqc.html, *_fastqc.zip
+    │   ├── quast_prepolish/quast_output/     report.html, report.tsv, ... (só caminho Flye, logo após Racon/Medaka)
+    │   ├── quast_postpolish/quast_output/    report.html, report.tsv, ... (só caminho Flye, após Polypolish/NextPolish)
+    │   ├── quast/quast_output/               report.html, report.tsv, ... (só caminho Unicycler, chamada única)
+    │   ├── busco_prepolish/busco_output/     short_summary.txt, full_table.tsv, ... (só caminho Flye, sem --reference)
+    │   ├── busco_postpolish/busco_output/    short_summary.txt, full_table.tsv, ... (só caminho Flye, sem --reference)
+    │   ├── busco/busco_output/               short_summary.txt, full_table.tsv, ... (só caminho Unicycler, sem --reference)
+    │   ├── checkm2_prepolish/checkm2_output/   quality_report.tsv, ... (só caminho Flye, sempre)
+    │   ├── checkm2_postpolish/checkm2_output/  quality_report.tsv, ... (só caminho Flye, sempre)
+    │   └── checkm2/checkm2_output/           quality_report.tsv, ... (só caminho Unicycler, sempre)
+    ├── assembly/
+    │   ├── flye/               {sample}.assembly.fasta (+ flye_output/assembly_info.txt)
+    │   └── unicycler/          {sample}.assembly.fasta (caminho short-only)
+    └── polishing/
+        ├── racon/               {sample}.racon.fasta (opcional)
+        ├── medaka/              {sample}.medaka.fasta
+        ├── polypolish/          {sample}.polypolish.fasta (padrão)
+        └── nextpolish/          {sample}.nextpolish.fasta (alternativa, --polisher nextpolish)
 ```
 
 Uma amostra só gera **um** dos pares de cada avaliação: `_prepolish/`+`_postpolish/` se veio pelo caminho Flye (denovo ou reference), ou a chamada única se veio pelo caminho Unicycler. Diretórios `busco*/` só existem quando `--reference` não foi informado; `checkm2*/` existem sempre.
