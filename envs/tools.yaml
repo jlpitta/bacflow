@@ -21,3 +21,4 @@ dependencies:
   - nextflow=26.04.6
   - fastqc=0.12.1
   - nanocomp=1.25.6
+  - busco=6.1.0

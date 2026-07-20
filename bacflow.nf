@@ -19,6 +19,7 @@ include { MEDAKA            } from './modules/local/medaka'
 include { POLYPOLISH        } from './modules/local/polypolish'
 include { NEXTPOLISH        } from './modules/local/nextpolish'
 include { QUAST; QUAST_PREPOLISH; QUAST_POSTPOLISH } from './modules/local/quast'
+include { BUSCO; BUSCO_PREPOLISH; BUSCO_POSTPOLISH } from './modules/local/busco'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,9 @@ def help_message() {
     Mode:
       --mode MODE             denovo | reference [default: denovo]
       --reference FILE        Reference FASTA (required for --mode reference; optional QUAST comparison in denovo)
+                               In denovo mode, when omitted, BUSCO pre/post-polish runs instead
+                               of reference-based QUAST comparison (gene completeness signal)
+      --busco_lineage NAME    BUSCO lineage dataset [default: bacteria_odb10] (only used when --reference is not set)
 
     Assembler (automatic, no flag):
       Samples with --long_reads are assembled with Flye.
@@ -236,6 +240,13 @@ workflow {
         // com short reads (compara com QUAST_POSTPOLISH mais abaixo)
         QUAST_PREPOLISH(ch_draft_flye, ch_reference)
 
+        // BUSCO só entra quando não há --reference: sem referência, a contiguidade
+        // do QUAST não muda com o polish (ele corrige erro de base, não estrutura),
+        // então a completude gênica do BUSCO é o sinal real de melhora
+        if (!params.reference) {
+            BUSCO_PREPOLISH(ch_draft_flye)
+        }
+
         // short-read polishing — only for flye_path samples that actually have
         // short reads. join(remainder:true) + branch + mix so that samples
         // without short reads pass through untouched instead of being silently
@@ -270,6 +281,10 @@ workflow {
         // o que é a informação correta: nenhum polimento foi aplicado)
         QUAST_POSTPOLISH(ch_draft_flye_final, ch_reference)
 
+        if (!params.reference) {
+            BUSCO_POSTPOLISH(ch_draft_flye_final)
+        }
+
         // ── Unicycler path (short-read-only samples) ────────────────────────────
         def ch_uni_input = branched.unicycler_path
             .map { s, lr, r1, r2, gs -> tuple(s) }
@@ -279,6 +294,11 @@ workflow {
         // never polished further — Unicycler already incorporates the short reads,
         // então não há estado "pré-polish" real pra comparar — QUAST único, como antes
         QUAST(ch_draft_uni, ch_reference)
+
+        // idem BUSCO: chamada única (sem antes/depois), só quando não há --reference
+        if (!params.reference) {
+            BUSCO(ch_draft_uni)
+        }
 
     // ─────────────────────────────────────────────────────────────────────────
     // REFERENCE MODE
