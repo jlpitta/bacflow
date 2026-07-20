@@ -41,11 +41,13 @@ Amostra tem long_reads?
 │           Short reads (se houver) ─► FASTP² ─► [Polypolish] ou [NextPolish] (opc.)
 │                                                                    │
 │                                                                    ▼
-│                                                      [QUAST³/BUSCO⁴/CheckM2⁵ pós-polish]
-│
-└── NÃO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵]
-            (short-read-only, sem Racon/Medaka/polish adicional,
-             sem estado "pré-polish" real — chamada única, como sempre)
+│                                                      [QUAST³/BUSCO⁴/CheckM2⁵ pós-polish] ──┐
+│                                                                                              │
+└── NÃO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ────────────────┤
+            (short-read-only, sem Racon/Medaka/polish adicional,                              │
+             sem estado "pré-polish" real — chamada única, como sempre)                       ▼
+                                                                                   [MultiQC⁶] (fim do run,
+                                                                                    todas as amostras juntas)
 
 ¹ NanoFilt é bracketado por QC raw-vs-trimmed: NanoStat (antes/depois) + NanoComp
   (comparativo HTML) — roda sempre em paralelo, não bloqueia o fluxo
@@ -61,6 +63,9 @@ Amostra tem long_reads?
   então a completude gênica do BUSCO é o sinal real de melhora
 ⁵ CheckM2 roda **sempre**, com ou sem --reference (diferente do BUSCO): mede
   completude E contaminação, uma dimensão que nem QUAST nem BUSCO cobrem
+⁶ MultiQC junta FastQC + NanoStat + QUAST + CheckM2 de todas as amostras num
+  único relatório (results/multiqc/) — roda uma vez só, não por amostra; BUSCO
+  e NanoComp ficam de fora (ver seção Agregação abaixo)
 ```
 
 Ver [QC de reads](#qc-de-reads-raw-vs-trimmed) para detalhes de onde cada relatório é gerado.
