@@ -16,6 +16,7 @@ Pipeline [Nextflow](https://www.nextflow.io/) DSL2 para **montagem de genomas**,
 - [Parâmetros](#parâmetros)
 - [QC de reads (raw vs. trimmed)](#qc-de-reads-raw-vs-trimmed)
 - [Agregação (MultiQC)](#agregação-multiqc)
+- [Dashboard de comparação](#dashboard-de-comparação)
 - [Os 7 fluxos de execução](#os-7-fluxos-de-execução)
 - [Controle de CPUs](#controle-de-cpus)
 - [Profiles (gerenciador de pacotes)](#profiles-gerenciador-de-pacotes)
@@ -313,6 +314,19 @@ Junta num único relatório HTML: **FastQC** (raw/trimmed), **NanoStat** (raw/tr
 
 ---
 
+## Dashboard de comparação
+
+Roda **uma única vez ao final do run** (mesmo escopo do `MULTIQC`), gerando `results/dashboard.html` — um card por amostra comparando as métricas pré/pós-polish de verdade (QUAST, BUSCO, CheckM2), com veredito por métrica e badge do tipo de input usado.
+
+- **Badge de input**: cada card mostra se a amostra rodou como `Long + Short` (híbrida, caminho Flye), `Long only` (long-read-only, caminho Flye sem short reads) ou `Short only` (caminho Unicycler).
+- **Veredito por métrica**: cada linha/gráfico traz seu próprio veredito de melhora (não o veredito geral da amostra) — com um "piso de ruído" para não marcar como piora/melhora oscilações irrelevantes.
+- **Slope charts em SVG**: 4 gráficos gerados dinamicamente — QUAST (mismatches), BUSCO (%Complete), CheckM2 (Completeness), CheckM2 (Contamination).
+- Implementado em `bin/summarize_sample.py` (parser por amostra, gera `{sample}.summary.json`), `bin/generate_dashboard.py` (agrega os JSONs e monta o HTML) e `assets/dashboard_template.html` (template real, sem dados fictícios).
+- Amostras são processadas por `SAMPLE_SUMMARY` (por amostra, `modules/local/dashboard.nf`) e agregadas por `DASHBOARD` (uma vez por run, mesmo padrão do `MULTIQC`).
+- Validado em 3 cenários reais (22/07/2026): `--reference`/Flye, sem `--reference`/BUSCO, e multi-amostra via `--samplesheet` misturando Flye+Unicycler no mesmo run (valida o `.mix()` de canais sob a restrição DSL2 de processo chamado uma única vez).
+
+---
+
 ## Os 7 fluxos de execução
 
 Cada fluxo pode ser executado de duas formas:
@@ -592,6 +606,7 @@ bacflow/
 
 ```
 results/
+├── dashboard.html                        card por amostra, QUAST/BUSCO/CheckM2 pré/pós-polish + badge de input (run inteiro, todas as amostras)
 ├── multiqc/                              multiqc_report.html, multiqc_data/ (run inteiro, todas as amostras)
 └── {sample}/
     ├── qc/
