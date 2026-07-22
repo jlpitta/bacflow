@@ -10,7 +10,7 @@ process BUSCO {
     tuple val(sample), path(assembly)
 
     output:
-    path "busco_output", emit: report
+    tuple val(sample), path("busco_output"), emit: report
 
     script:
     """
@@ -34,7 +34,7 @@ process BUSCO_PREPOLISH {
     tuple val(sample), path(assembly)
 
     output:
-    path "busco_output", emit: report
+    tuple val(sample), path("busco_output"), emit: report
 
     script:
     """
@@ -58,7 +58,7 @@ process BUSCO_POSTPOLISH {
     tuple val(sample), path(assembly)
 
     output:
-    path "busco_output", emit: report
+    tuple val(sample), path("busco_output"), emit: report
 
     script:
     """

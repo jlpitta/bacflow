@@ -10,7 +10,7 @@ process CHECKM2 {
     tuple val(sample), path(assembly)
 
     output:
-    path "checkm2_output", emit: report
+    tuple val(sample), path("checkm2_output"), emit: report
 
     script:
     """
@@ -33,7 +33,7 @@ process CHECKM2_PREPOLISH {
     tuple val(sample), path(assembly)
 
     output:
-    path "checkm2_output", emit: report
+    tuple val(sample), path("checkm2_output"), emit: report
 
     script:
     """
@@ -56,7 +56,7 @@ process CHECKM2_POSTPOLISH {
     tuple val(sample), path(assembly)
 
     output:
-    path "checkm2_output", emit: report
+    tuple val(sample), path("checkm2_output"), emit: report
 
     script:
     """

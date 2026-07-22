@@ -22,6 +22,7 @@ include { QUAST; QUAST_PREPOLISH; QUAST_POSTPOLISH } from './modules/local/quast
 include { BUSCO; BUSCO_PREPOLISH; BUSCO_POSTPOLISH } from './modules/local/busco'
 include { CHECKM2; CHECKM2_PREPOLISH; CHECKM2_POSTPOLISH } from './modules/local/checkm2'
 include { MULTIQC } from './modules/local/multiqc'
+include { SAMPLE_SUMMARY; DASHBOARD } from './modules/local/dashboard'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -228,6 +229,10 @@ workflow {
         .mix(NANOSTAT_RAW.out.report)
         .mix(NANOSTAT_TRIMMED.out.report)
 
+    // dashboard summary JSONs, accumulated across denovo/reference branches the
+    // same way ch_multiqc_files is above — DASHBOARD is called once at the end
+    def ch_summary_json = Channel.empty()
+
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
     // ─────────────────────────────────────────────────────────────────────────
@@ -327,6 +332,51 @@ workflow {
         CHECKM2(ch_draft_uni)
         ch_multiqc_files = ch_multiqc_files.mix(QUAST.out.report, CHECKM2.out.report)
 
+        // ── dashboard summary (per sample) ───────────────────────────────────
+        // flye_path and unicycler_path are not mutually exclusive within denovo
+        // mode (a samplesheet can mix both), so — same reasoning as the QUAST/
+        // BUSCO/CHECKM2 calls above — SAMPLE_SUMMARY is called ONCE on a channel
+        // that merges both paths via mix(), rather than once per path.
+        def ch_summary_meta_flye = branched.flye_path.map { s, lr, r1, r2, gs ->
+            tuple(s, r1 != null ? 'hybrid' : 'long_only', 'flye')
+        }
+        def ch_summary_meta_uni = branched.unicycler_path.map { s, lr, r1, r2, gs ->
+            tuple(s, 'short_only', 'unicycler')
+        }
+        def ch_summary_meta = ch_summary_meta_flye.mix(ch_summary_meta_uni)
+
+        // Unicycler has no separate polish step: QUAST/BUSCO/CHECKM2 there are
+        // single calls, fed as both pre and post so the dashboard can render
+        // "no comparison" for those samples instead of a fake delta.
+        def ch_quast_pre_denovo   = QUAST_PREPOLISH.out.report.mix(QUAST.out.report)
+        def ch_quast_post_denovo  = QUAST_POSTPOLISH.out.report.mix(QUAST.out.report)
+        def ch_checkm2_pre_denovo  = CHECKM2_PREPOLISH.out.report.mix(CHECKM2.out.report)
+        def ch_checkm2_post_denovo = CHECKM2_POSTPOLISH.out.report.mix(CHECKM2.out.report)
+
+        // BUSCO only exists at all when !params.reference (global toggle, not
+        // per-sample) — when it doesn't run, feed [] so SAMPLE_SUMMARY's busco
+        // input stages no files and the script omits --busco-pre/--busco-post
+        def ch_busco_pre_denovo  = Channel.empty()
+        def ch_busco_post_denovo = Channel.empty()
+        if (!params.reference) {
+            ch_busco_pre_denovo  = BUSCO_PREPOLISH.out.report.mix(BUSCO.out.report)
+            ch_busco_post_denovo = BUSCO_POSTPOLISH.out.report.mix(BUSCO.out.report)
+        }
+
+        def ch_summary_input_denovo = ch_summary_meta
+            .join(ch_quast_pre_denovo)
+            .join(ch_quast_post_denovo)
+            .join(ch_checkm2_pre_denovo)
+            .join(ch_checkm2_post_denovo)
+            .join(ch_busco_pre_denovo,  remainder: true)
+            .join(ch_busco_post_denovo, remainder: true)
+            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, bpre, bpost ->
+                tuple(s, input_type, assembler, qpre, qpost, bpre ?: [], bpost ?: [], cpre, cpost)
+            }
+
+        SAMPLE_SUMMARY(ch_summary_input_denovo)
+        ch_summary_json = ch_summary_json.mix(SAMPLE_SUMMARY.out.json)
+
     // ─────────────────────────────────────────────────────────────────────────
     // REFERENCE MODE
     // ─────────────────────────────────────────────────────────────────────────
@@ -370,9 +420,29 @@ workflow {
         CHECKM2_POSTPOLISH(ch_draft)
         ch_multiqc_files = ch_multiqc_files.mix(QUAST_POSTPOLISH.out.report, CHECKM2_POSTPOLISH.out.report)
 
+        // ── dashboard summary (per sample) ───────────────────────────────────
+        // reference mode requires long_reads for every sample (validated in
+        // parse_samplesheet / the single-sample branches above), so there is no
+        // unicycler_path here and no busco (has_reference is always true).
+        def ch_summary_meta_ref = ch_input.map { s, lr, r1, r2, gs ->
+            tuple(s, r1 != null ? 'hybrid' : 'long_only', 'reference')
+        }
+        def ch_summary_input_ref = ch_summary_meta_ref
+            .join(QUAST_PREPOLISH.out.report)
+            .join(QUAST_POSTPOLISH.out.report)
+            .join(CHECKM2_PREPOLISH.out.report)
+            .join(CHECKM2_POSTPOLISH.out.report)
+            .map { s, input_type, assembler, qpre, qpost, cpre, cpost ->
+                tuple(s, input_type, assembler, qpre, qpost, [], [], cpre, cpost)
+            }
+
+        SAMPLE_SUMMARY(ch_summary_input_ref)
+        ch_summary_json = ch_summary_json.mix(SAMPLE_SUMMARY.out.json)
+
     } else {
         error "Unknown --mode '${params.mode}'. Use 'denovo' or 'reference'."
     }
 
     MULTIQC(ch_multiqc_files.collect(), outdir_abs)
+    DASHBOARD(ch_summary_json.collect(), workflow.commitId ?: 'n/d', workflow.nextflow.version.toString())
 }

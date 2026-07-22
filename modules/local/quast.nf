@@ -11,7 +11,7 @@ process QUAST {
     path reference
 
     output:
-    path "quast_output", emit: report
+    tuple val(sample), path("quast_output"), emit: report
 
     script:
     def ref_arg = reference ? "--reference ${reference}" : ""
@@ -35,7 +35,7 @@ process QUAST_PREPOLISH {
     path reference
 
     output:
-    path "quast_output", emit: report
+    tuple val(sample), path("quast_output"), emit: report
 
     script:
     def ref_arg = reference ? "--reference ${reference}" : ""
@@ -59,7 +59,7 @@ process QUAST_POSTPOLISH {
     path reference
 
     output:
-    path "quast_output", emit: report
+    tuple val(sample), path("quast_output"), emit: report
 
     script:
     def ref_arg = reference ? "--reference ${reference}" : ""

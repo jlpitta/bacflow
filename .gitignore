@@ -1,0 +1,6 @@
+.nextflow/
+.nextflow.log*
+.nextflow.pid
+work_test_*/
+test_run_*/
+test_run_c_launch.log
