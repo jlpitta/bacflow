@@ -395,12 +395,16 @@ workflow {
 
         if (!params.reference) error "--reference is required in reference mode"
 
-        def ch_ref_draft
-        ch_ref_draft = Channel.fromPath(params.reference)
-            .map { f -> tuple(params.sample_name, f) }
+        def ch_ref_file = Channel.fromPath(params.reference)
 
-        // combine per-sample lr with the reference draft
-        def ch_medaka_input = ch_lr_filtered.combine(ch_ref_draft, by: 0)
+        // combine per-sample lr with the reference draft — cross join (not
+        // keyed), since the reference file has no sample name and is the
+        // same for every sample in the run, whether from --reference or a
+        // --samplesheet (a by:0 keyed combine against params.sample_name
+        // only ever matched the single-sample CLI case by coincidence — with
+        // a samplesheet no row's sample name ever equals params.sample_name,
+        // so MEDAKA silently never ran for any sample)
+        def ch_medaka_input = ch_lr_filtered.combine(ch_ref_file)
 
         MEDAKA(ch_medaka_input, medaka_model)
         def ch_draft = MEDAKA.out.assembly
@@ -415,12 +419,35 @@ workflow {
         CHECKM2_PREPOLISH(ch_draft)
         ch_multiqc_files = ch_multiqc_files.mix(QUAST_PREPOLISH.out.report, CHECKM2_PREPOLISH.out.report)
 
+        // short-read polishing — same join(remainder:true)+wrap+branch fix as
+        // v0.9.1 in denovo mode: a plain inner join here silently dropped any
+        // sample with no short reads (and ALL samples when ch_sr_clean was
+        // entirely empty for the whole run) from POLYPOLISH onward instead of
+        // just passing them through unpolished. Variable names kept distinct
+        // from the denovo block's (ch_sr_wrapped/ch_flye_joined/polish_branch)
+        // even though the two are mutually exclusive branches, since this
+        // Nextflow version has shown sensitivity to repeated `def` in the same
+        // workflow scope (see the 17/07 "Channel already defined" fix).
+        def ch_ref_sr_wrapped = ch_sr_clean.map { s, r1, r2 -> tuple(s, [r1, r2]) }
+        def ch_ref_joined = ch_draft.join(ch_ref_sr_wrapped, remainder: true)
+            .filter { s, asm, sr -> asm != null }
+            .map { s, asm, sr ->
+                def (r1, r2) = (sr instanceof List) ? sr : [null, null]
+                tuple(s, asm, r1, r2)
+            }
+        def polish_branch_ref = ch_ref_joined.branch { s, asm, r1, r2 ->
+            to_polish:   r1 != null && params.polisher != 'none'
+            passthrough: !(r1 != null && params.polisher != 'none')
+        }
+
         if (params.polisher == 'polypolish') {
-            POLYPOLISH(ch_draft.join(ch_sr_clean))
+            POLYPOLISH(polish_branch_ref.to_polish.map { s, asm, r1, r2 -> tuple(s, asm, r1, r2) })
             ch_draft = POLYPOLISH.out.assembly
+                .mix(polish_branch_ref.passthrough.map { s, asm, r1, r2 -> tuple(s, asm) })
         } else if (params.polisher == 'nextpolish') {
-            NEXTPOLISH(ch_draft.join(ch_sr_clean), params.nextpolish_rounds)
+            NEXTPOLISH(polish_branch_ref.to_polish.map { s, asm, r1, r2 -> tuple(s, asm, r1, r2) }, params.nextpolish_rounds)
             ch_draft = NEXTPOLISH.out.assembly
+                .mix(polish_branch_ref.passthrough.map { s, asm, r1, r2 -> tuple(s, asm) })
         }
 
         // QC de montagem pós-polish — idêntico ao pré-polish se nenhum polimento
