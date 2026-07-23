@@ -142,7 +142,7 @@ workflow {
     if (params.help) { help_message(); exit 0 }
 
     def max_cpus = Runtime.runtime.availableProcessors()
-    if (params.t > max_cpus) {
+    if ((params.t as int) > max_cpus) {
         log.warn "Requested --t ${params.t} exceeds available CPUs (${max_cpus}) on this machine — capping to ${max_cpus}."
     }
 
