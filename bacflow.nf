@@ -280,8 +280,19 @@ workflow {
         // ch_draft_flye (asm=null) — e.g. unicycler_path (short-only) samples,
         // which have no Flye assembly at all — so those need filtering out here
         // instead of leaking into POLYPOLISH/NEXTPOLISH with a null path.
-        def ch_flye_joined = ch_draft_flye.join(ch_sr_clean, remainder: true)
-            .filter { s, asm, r1, r2 -> asm != null }
+        // r1/r2 are wrapped as a single nested value before the join so the
+        // join's own tuple arity stays fixed at (sample, asm, sr) even when
+        // ch_sr_clean never emits a single item for the whole run (pure
+        // long-read-only runs) — join(remainder:true) can't infer the right-hand
+        // tuple shape from zero observed items, so without the wrapper it pads
+        // with the wrong number of nulls and breaks the downstream destructuring.
+        def ch_sr_wrapped = ch_sr_clean.map { s, r1, r2 -> tuple(s, [r1, r2]) }
+        def ch_flye_joined = ch_draft_flye.join(ch_sr_wrapped, remainder: true)
+            .filter { s, asm, sr -> asm != null }
+            .map { s, asm, sr ->
+                def (r1, r2) = (sr instanceof List) ? sr : [null, null]
+                tuple(s, asm, r1, r2)
+            }
         def polish_branch = ch_flye_joined.branch { s, asm, r1, r2 ->
             to_polish:   r1 != null && params.polisher != 'none'
             passthrough: !(r1 != null && params.polisher != 'none')
