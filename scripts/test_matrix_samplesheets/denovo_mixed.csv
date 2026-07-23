@@ -1,0 +1,4 @@
+sample,long_reads,short_reads_1,short_reads_2,genome_size
+sa_hybrid,genome_test/staphylococcus_aureus_real/long_reads.fastq.gz,genome_test/staphylococcus_aureus_real/short_reads_1.fastq.gz,genome_test/staphylococcus_aureus_real/short_reads_2.fastq.gz,2.8m
+sa_longonly,genome_test/staphylococcus_aureus_real/long_reads.fastq.gz,,,2.8m
+sa_shortonly,,genome_test/staphylococcus_aureus_real/short_reads_1.fastq.gz,genome_test/staphylococcus_aureus_real/short_reads_2.fastq.gz,
