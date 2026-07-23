@@ -47,16 +47,16 @@ declare -A TEST_DESC=(
   [D7]="denovo long-only -ref (BUSCO)"
   [D8]="denovo short-only(Unicycler) +ref"
   [D9]="denovo short-only(Unicycler) -ref (BUSCO)"
-  [D10]="denovo hybrid +ref platform=pacbio (skips Medaka)"
+  [D10]="denovo hybrid +ref platform=pacbio +flye_mode=nano-hq (skips Medaka; flye_mode overridden since test reads aren't real HiFi)"
   [R1]="reference hybrid polypolish"
   [R2]="reference hybrid nextpolish"
   [R3]="reference hybrid polisher=none"
-  [R4]="reference long-only polypolish -- SUSPECTED BUG (silent drop via inner join)"
+  [R4]="reference long-only polypolish (fixed in v0.9.2 -- was silently dropping post-polish stages via inner join)"
   [R5]="reference long-only polisher=none (control for R4)"
   [R6]="reference hybrid polypolish racon"
   [S1]="samplesheet denovo mixed(hybrid+longonly+shortonly) +ref"
   [S2]="samplesheet denovo mixed(hybrid+longonly+shortonly) -ref (BUSCO)"
-  [S3]="samplesheet reference mixed(hybrid+longonly) -- multi-sample SUSPECTED BUG"
+  [S3]="samplesheet reference mixed(hybrid+longonly) (fixed in v0.9.2 -- Medaka wasn't running for any sample)"
 )
 
 # Fills the `args` nameref with the nextflow CLI flags for a given test id.
@@ -74,7 +74,7 @@ build_args() {
     D7)  out+=(--long_reads "$LONG" --genome_size "$GSIZE" --sample_name sa_d7) ;;
     D8)  out+=(--short_reads_1 "$SR1" --short_reads_2 "$SR2" --sample_name sa_d8 --reference "$REF") ;;
     D9)  out+=(--short_reads_1 "$SR1" --short_reads_2 "$SR2" --sample_name sa_d9) ;;
-    D10) out+=(--long_reads "$LONG" --short_reads_1 "$SR1" --short_reads_2 "$SR2" --genome_size "$GSIZE" --sample_name sa_d10 --reference "$REF" --platform pacbio) ;;
+    D10) out+=(--long_reads "$LONG" --short_reads_1 "$SR1" --short_reads_2 "$SR2" --genome_size "$GSIZE" --sample_name sa_d10 --reference "$REF" --platform pacbio --flye_mode nano-hq) ;;
     R1)  out+=(--mode reference --long_reads "$LONG" --short_reads_1 "$SR1" --short_reads_2 "$SR2" --genome_size "$GSIZE" --sample_name sa_r1 --reference "$REF") ;;
     R2)  out+=(--mode reference --long_reads "$LONG" --short_reads_1 "$SR1" --short_reads_2 "$SR2" --genome_size "$GSIZE" --sample_name sa_r2 --reference "$REF" --polisher nextpolish) ;;
     R3)  out+=(--mode reference --long_reads "$LONG" --short_reads_1 "$SR1" --short_reads_2 "$SR2" --genome_size "$GSIZE" --sample_name sa_r3 --reference "$REF" --polisher none) ;;
