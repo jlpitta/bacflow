@@ -19,7 +19,7 @@ BANNER
 echo "Instalador de ambientes"
 echo ""
 
-TOTAL_STEPS=4
+TOTAL_STEPS=6
 CURRENT_STEP=0
 CURRENT_STEP_NAME=""
 STEP_START_TS=0
@@ -42,6 +42,28 @@ step_start() {
 step_end() {
     local elapsed=$(( $(date +%s) - STEP_START_TS ))
     printf "    concluído em %02d:%02d\n" $((elapsed / 60)) $((elapsed % 60))
+}
+
+# Retry com backoff pra downloads de banco (curl/requests embutidos nas
+# próprias ferramentas — não dá pra injetar wget -c, então envolvemos a
+# chamada do comando inteira; falha de rede passageira não derruba a
+# instalação inteira, só essa etapa até esgotar as tentativas).
+retry_cmd() {
+    local max_attempts=3
+    local delay=20
+    local attempt=1
+    while true; do
+        if "$@"; then
+            return 0
+        fi
+        if [ "${attempt}" -ge "${max_attempts}" ]; then
+            echo "    falhou após ${max_attempts} tentativas."
+            return 1
+        fi
+        echo "    tentativa ${attempt}/${max_attempts} falhou, tentando de novo em ${delay}s..."
+        sleep "${delay}"
+        attempt=$((attempt + 1))
+    done
 }
 
 # detecta gerenciador de pacotes disponível
@@ -82,7 +104,23 @@ if [ -f "${CHECKM2_DB}" ]; then
     step_end
 else
     step_start "Baixando banco de dados do CheckM2 (~1.7 GB, uma vez só)"
-    ${PKG} run -n bacflow-checkm2 checkm2 database --download --path "${HOME}/checkm2_db"
+    retry_cmd ${PKG} run -n bacflow-checkm2 checkm2 database --download --path "${HOME}/checkm2_db"
+    step_end
+fi
+
+step_start "Instalando bacflow-bakta"
+${PKG} env create -f "${SCRIPT_DIR}/envs/bakta.yaml" --yes || \
+    ${PKG} env update -f "${SCRIPT_DIR}/envs/bakta.yaml" --prune
+step_end
+
+BAKTA_DB="${HOME}/bakta_db/db"
+if [ -d "${BAKTA_DB}" ] && [ -n "$(ls -A "${BAKTA_DB}" 2>/dev/null)" ]; then
+    step_start "Banco de dados do Bakta"
+    echo "    já presente em ${BAKTA_DB}, pulando download."
+    step_end
+else
+    step_start "Baixando banco de dados do Bakta (~30 GB, uma vez só — pode demorar)"
+    retry_cmd ${PKG} run -n bacflow-bakta bakta_db download --output "${HOME}/bakta_db" --type full
     step_end
 fi
 

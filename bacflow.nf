@@ -23,6 +23,7 @@ include { BUSCO; BUSCO_PREPOLISH; BUSCO_POSTPOLISH } from './modules/local/busco
 include { CHECKM2; CHECKM2_PREPOLISH; CHECKM2_POSTPOLISH } from './modules/local/checkm2'
 include { MULTIQC } from './modules/local/multiqc'
 include { SAMPLE_SUMMARY; DASHBOARD } from './modules/local/dashboard'
+include { BAKTA } from './modules/local/bakta'
 
 // ─── banner ──────────────────────────────────────────────────────────────────
 // Plain text, no ANSI colors — this also gets written to .nextflow.log and any
@@ -91,6 +92,8 @@ def help_message() {
       --busco_lineage NAME    BUSCO lineage dataset [default: bacteria_odb10] (only used when --reference is not set)
       --checkm2_db PATH       Path to CheckM2 DIAMOND database [default: ~/checkm2_db/CheckM2_database/uniref100.KO.1.dmnd]
                                CheckM2 (completeness + contamination) always runs, regardless of --reference
+      --bakta_db PATH         Path to the Bakta annotation database [default: ~/bakta_db/db]
+                               Bakta (genome annotation) always runs on the final assembly, regardless of --reference
 
     Assembler (automatic, no flag):
       Samples with --long_reads are assembled with Flye.
@@ -251,6 +254,11 @@ workflow {
     // same way ch_multiqc_files is above — DASHBOARD is called once at the end
     def ch_summary_json = Channel.empty()
 
+    // Bakta annotation output, accumulated the same way as ch_summary_json —
+    // not consumed by anything yet (SAMPLE_SUMMARY/dashboard integration is a
+    // separate follow-up item), just made available run-wide for that later.
+    def ch_bakta_out = Channel.empty()
+
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
     // ─────────────────────────────────────────────────────────────────────────
@@ -360,6 +368,14 @@ workflow {
         // CheckM2 roda sempre, chamada única (sem antes/depois), como o QUAST único
         CHECKM2(ch_draft_uni)
         ch_multiqc_files = ch_multiqc_files.mix(QUAST.out.report, CHECKM2.out.report)
+
+        // ── annotation (final assembly, both paths) ──────────────────────────
+        // Bakta runs once on the final assembly regardless of path — same
+        // "merge both paths via mix()" reasoning as SAMPLE_SUMMARY below,
+        // since flye_path and unicycler_path are not mutually exclusive within
+        // denovo mode.
+        BAKTA(ch_draft_flye_final.mix(ch_draft_uni))
+        ch_bakta_out = ch_bakta_out.mix(BAKTA.out.report)
 
         // ── dashboard summary (per sample) ───────────────────────────────────
         // flye_path and unicycler_path are not mutually exclusive within denovo
@@ -475,6 +491,10 @@ workflow {
 
         CHECKM2_POSTPOLISH(ch_draft)
         ch_multiqc_files = ch_multiqc_files.mix(QUAST_POSTPOLISH.out.report, CHECKM2_POSTPOLISH.out.report)
+
+        // ── annotation (final assembly) ───────────────────────────────────────
+        BAKTA(ch_draft)
+        ch_bakta_out = ch_bakta_out.mix(BAKTA.out.report)
 
         // ── dashboard summary (per sample) ───────────────────────────────────
         // reference mode requires long_reads for every sample (validated in

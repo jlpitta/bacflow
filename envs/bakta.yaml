@@ -1,0 +1,7 @@
+name: bacflow-bakta
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - bakta
