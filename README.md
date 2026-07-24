@@ -57,8 +57,9 @@ Does the sample have long_reads?
 └── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
             (short-read-only, no Racon/Medaka/extra polish,                                   │
              no real "pre-polish" state — single call, as always)                             ▼
-                                                                                   [MultiQC⁶] (end of run,
-                                                                                    all samples together)
+                                                                          [MultiQC⁶ / Dashboard⁷]
+                                                                          (end of run, all samples
+                                                                           together)
 
 ¹ NanoFilt is bracketed by raw-vs-trimmed QC: NanoStat (before/after) + NanoComp
   (comparative HTML) — always runs in parallel, does not block the flow
@@ -77,6 +78,10 @@ Does the sample have long_reads?
 ⁶ MultiQC combines FastQC + NanoStat + QUAST + CheckM2 from all samples into a
   single report (results/multiqc/) — runs once, not per sample; BUSCO
   and NanoComp are left out (see Aggregation section below)
+⁷ Dashboard generates results/dashboard.html — one card per sample with real
+  pre/post-polish comparisons (QUAST/BUSCO/CheckM2) and a per-metric verdict;
+  runs at the same point as MultiQC (once per run, all samples together) —
+  see Comparison dashboard section below
 ```
 
 See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is generated.
