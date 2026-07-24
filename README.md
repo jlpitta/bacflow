@@ -57,7 +57,11 @@ Does the sample have long_reads?
 └── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
             (short-read-only, no Racon/Medaka/extra polish,                                   │
              no real "pre-polish" state — single call, as always)                             ▼
-                                                                          [MultiQC⁶ / Dashboard⁷]
+                                                                                     [Bakta⁷] (per sample,
+                                                                                      final assembly)
+                                                                                              │
+                                                                                              ▼
+                                                                          [MultiQC⁶ / Dashboard⁸]
                                                                           (end of run, all samples
                                                                            together)
 
@@ -78,7 +82,13 @@ Does the sample have long_reads?
 ⁶ MultiQC combines FastQC + NanoStat + QUAST + CheckM2 from all samples into a
   single report (results/multiqc/) — runs once, not per sample; BUSCO
   and NanoComp are left out (see Aggregation section below)
-⁷ Dashboard generates results/dashboard.html — one card per sample with real
+⁷ Bakta annotates the final assembly (post-polish on the Flye path, the single
+  assembly on the Unicycler path) — runs once per sample, like QUAST/BUSCO/
+  CheckM2 above it, not run-scope like MultiQC/Dashboard below it. Not yet
+  wired into the dashboard/summary — planned as part of the AMRFinderPlus +
+  GTDB-Tk genomic-surveillance modules (Bakta's protein/GFF output feeds
+  AMRFinderPlus's most accurate mode)
+⁸ Dashboard generates results/dashboard.html — one card per sample with real
   pre/post-polish comparisons (QUAST/BUSCO/CheckM2) and a per-metric verdict;
   runs at the same point as MultiQC (once per run, all samples together) —
   see Comparison dashboard section below
@@ -108,6 +118,7 @@ See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is gener
 | Evaluation (post-polish) | QUAST | Final assembly metrics — post-polish on the Flye path (`qc/quast_postpolish/`), single call on the Unicycler path (`qc/quast/`) |
 | Evaluation (post-polish, no reference) | BUSCO | Final gene completeness — post-polish on the Flye path (`qc/busco_postpolish/`), single call on the Unicycler path (`qc/busco/`) — only without `--reference` |
 | Evaluation (post-polish, always) | CheckM2 | Final completeness + contamination — post-polish on the Flye path (`qc/checkm2_postpolish/`), single call on the Unicycler path (`qc/checkm2/`) |
+| Annotation (final assembly) | Bakta | Genome annotation (CDSs, tRNAs, rRNAs, ncRNAs, etc.) — runs once per sample, both paths (`annotation/bakta/`) |
 | Aggregation (end of run) | MultiQC | Single report combining FastQC, NanoStat, QUAST and CheckM2 from all samples (`multiqc/`) |
 
 ---
@@ -593,7 +604,8 @@ bacflow/
 ├── envs/
 │   ├── tools.yaml            # → bacflow-tools
 │   ├── medaka.yaml           # → bacflow-medaka (isolated)
-│   └── checkm2.yaml          # → bacflow-checkm2 (isolated)
+│   ├── checkm2.yaml          # → bacflow-checkm2 (isolated)
+│   └── bakta.yaml            # → bacflow-bakta
 ├── genome_test/               # ready-to-use test data (see Testing the pipeline)
 │   ├── mycoplasma_genitalium_synthetic/
 │   └── staphylococcus_aureus_real/
@@ -612,7 +624,8 @@ bacflow/
     ├── nextpolish.nf
     ├── quast.nf           # QUAST + QUAST_PREPOLISH + QUAST_POSTPOLISH
     ├── busco.nf           # BUSCO + BUSCO_PREPOLISH + BUSCO_POSTPOLISH
-    └── checkm2.nf          # CHECKM2 + CHECKM2_PREPOLISH + CHECKM2_POSTPOLISH
+    ├── checkm2.nf          # CHECKM2 + CHECKM2_PREPOLISH + CHECKM2_POSTPOLISH
+    └── bakta.nf            # BAKTA
 ```
 
 ---
@@ -644,11 +657,13 @@ results/
     ├── assembly/
     │   ├── flye/               {sample}.assembly.fasta (+ flye_output/assembly_info.txt)
     │   └── unicycler/          {sample}.assembly.fasta (short-only path)
-    └── polishing/
-        ├── racon/               {sample}.racon.fasta (optional)
-        ├── medaka/              {sample}.medaka.fasta
-        ├── polypolish/          {sample}.polypolish.fasta (default)
-        └── nextpolish/          {sample}.nextpolish.fasta (alternative, --polisher nextpolish)
+    ├── polishing/
+    │   ├── racon/               {sample}.racon.fasta (optional)
+    │   ├── medaka/              {sample}.medaka.fasta
+    │   ├── polypolish/          {sample}.polypolish.fasta (default)
+    │   └── nextpolish/          {sample}.nextpolish.fasta (alternative, --polisher nextpolish)
+    └── annotation/
+        └── bakta/bakta_output/  {sample}.gff3, .faa, .ffn, .gbff, .embl, .json, .tsv, ... (both paths, final assembly)
 ```
 
 A given sample only produces **one** of each evaluation pair: `_prepolish/`+`_postpolish/` if it went through the Flye path (denovo or reference), or the single call if it went through the Unicycler path. `busco*/` directories only exist when `--reference` was not provided; `checkm2*/` always exist.
