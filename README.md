@@ -11,220 +11,219 @@
 
 # bacflow
 
-Pipeline [Nextflow](https://www.nextflow.io/) DSL2 para **montagem de genomas**, com dois caminhos automáticos conforme os dados disponíveis por amostra: **long-read com polishing híbrido** (long reads + short reads Illumina, via Flye) ou **short-read-only** (só Illumina, via Unicycler). Combina ferramentas de montagem, polishing e avaliação de qualidade em um fluxo automatizado com gerenciamento de ambientes Conda.
+[Nextflow](https://www.nextflow.io/) DSL2 pipeline for **bacterial genome assembly**, with two automatic paths depending on the data available per sample: **long-read with hybrid polishing** (long reads + Illumina short reads, via Flye) or **short-read-only** (Illumina only, via Unicycler). Combines assembly, polishing and quality-assessment tools into an automated flow with Conda environment management.
 
 
 ---
 
-## Sumário
+## Table of contents
 
-- [Visão geral](#visão-geral)
-- [Instalação](#instalação)
-- [Ambientes Conda](#ambientes-conda)
-- [Plataformas suportadas](#plataformas-suportadas)
-- [Modos de execução](#modos-de-execução)
-- [Modos de input](#modos-de-input)
-- [Parâmetros](#parâmetros)
-- [QC de reads (raw vs. trimmed)](#qc-de-reads-raw-vs-trimmed)
-- [Agregação (MultiQC)](#agregação-multiqc)
-- [Dashboard de comparação](#dashboard-de-comparação)
-- [Os 7 fluxos de execução](#os-7-fluxos-de-execução)
-- [Controle de CPUs](#controle-de-cpus)
-- [Profiles (gerenciador de pacotes)](#profiles-gerenciador-de-pacotes)
-- [Testando o pipeline](#testando-o-pipeline)
-- [Estrutura de arquivos](#estrutura-de-arquivos)
-- [Estrutura de resultados](#estrutura-de-resultados)
-- [Regras importantes](#regras-importantes)
+- [Overview](#overview)
+- [Installation](#installation)
+- [Conda environments](#conda-environments)
+- [Supported platforms](#supported-platforms)
+- [Execution modes](#execution-modes)
+- [Input modes](#input-modes)
+- [Parameters](#parameters)
+- [Read QC (raw vs. trimmed)](#read-qc-raw-vs-trimmed)
+- [Aggregation (MultiQC)](#aggregation-multiqc)
+- [Comparison dashboard](#comparison-dashboard)
+- [The 7 execution flows](#the-7-execution-flows)
+- [CPU control](#cpu-control)
+- [Profiles (package manager)](#profiles-package-manager)
+- [Testing the pipeline](#testing-the-pipeline)
+- [File structure](#file-structure)
+- [Results structure](#results-structure)
+- [Important rules](#important-rules)
 
 ---
 
-## Visão geral
+## Overview
 
-O assembler é escolhido **automaticamente por amostra**, sem flag: quem tem
-`long_reads` monta com Flye; quem só tem short reads monta com Unicycler.
-Uma mesma `--samplesheet` pode misturar livremente amostras híbridas,
-long-only e short-only.
+The assembler is chosen **automatically per sample**, no flag needed: samples with
+`long_reads` are assembled with Flye; samples with short reads only are assembled with Unicycler.
+A single `--samplesheet` can freely mix hybrid, long-only and short-only samples.
 
 ```
-Amostra tem long_reads?
+Does the sample have long_reads?
 │
-├── SIM ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opc.) ──► [Medaka] ──► [QUAST³/BUSCO⁴/CheckM2⁵ pré-polish]
+├── YES ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opt.) ──► [Medaka] ──► [QUAST³/BUSCO⁴/CheckM2⁵ pre-polish]
 │                                                                    │
-│           Short reads (se houver) ─► FASTP² ─► [Polypolish] ou [NextPolish] (opc.)
+│           Short reads (if any) ─► FASTP² ─► [Polypolish] or [NextPolish] (opt.)
 │                                                                    │
 │                                                                    ▼
-│                                                      [QUAST³/BUSCO⁴/CheckM2⁵ pós-polish] ──┐
+│                                                      [QUAST³/BUSCO⁴/CheckM2⁵ post-polish] ──┐
 │                                                                                              │
-└── NÃO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ────────────────┤
-            (short-read-only, sem Racon/Medaka/polish adicional,                              │
-             sem estado "pré-polish" real — chamada única, como sempre)                       ▼
-                                                                                   [MultiQC⁶] (fim do run,
-                                                                                    todas as amostras juntas)
+└── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
+            (short-read-only, no Racon/Medaka/extra polish,                                   │
+             no real "pre-polish" state — single call, as always)                             ▼
+                                                                                   [MultiQC⁶] (end of run,
+                                                                                    all samples together)
 
-¹ NanoFilt é bracketado por QC raw-vs-trimmed: NanoStat (antes/depois) + NanoComp
-  (comparativo HTML) — roda sempre em paralelo, não bloqueia o fluxo
-² FASTP é bracketado por QC raw-vs-trimmed: FastQC (antes/depois) — roda sempre
-  em paralelo, não bloqueia o fluxo
-³ QUAST roda 2x no caminho Flye (denovo e reference): logo após Racon/Medaka
-  (quast_prepolish/) e de novo após Polypolish/NextPolish (quast_postpolish/) —
-  se nenhum polish foi aplicado (sem short reads ou --polisher none), os dois
-  relatórios saem idênticos, o que é a informação correta nesse caso
-⁴ BUSCO só roda quando --reference NÃO é informado (modo reference sempre tem
-  --reference, então nunca aciona BUSCO): sem referência, o QUAST não detecta
-  melhora do polish (ele corrige erro de base, não a estrutura/contiguidade),
-  então a completude gênica do BUSCO é o sinal real de melhora
-⁵ CheckM2 roda **sempre**, com ou sem --reference (diferente do BUSCO): mede
-  completude E contaminação, uma dimensão que nem QUAST nem BUSCO cobrem
-⁶ MultiQC junta FastQC + NanoStat + QUAST + CheckM2 de todas as amostras num
-  único relatório (results/multiqc/) — roda uma vez só, não por amostra; BUSCO
-  e NanoComp ficam de fora (ver seção Agregação abaixo)
+¹ NanoFilt is bracketed by raw-vs-trimmed QC: NanoStat (before/after) + NanoComp
+  (comparative HTML) — always runs in parallel, does not block the flow
+² FASTP is bracketed by raw-vs-trimmed QC: FastQC (before/after) — always runs
+  in parallel, does not block the flow
+³ QUAST runs twice on the Flye path (denovo and reference): right after Racon/Medaka
+  (quast_prepolish/) and again after Polypolish/NextPolish (quast_postpolish/) —
+  if no polishing was applied (no short reads, or --polisher none), both
+  reports come out identical, which is the correct information in that case
+⁴ BUSCO only runs when --reference is NOT provided (reference mode always has
+  --reference, so it never triggers BUSCO): without a reference, QUAST cannot detect
+  a polishing improvement (it fixes base errors, not structure/contiguity),
+  so BUSCO's gene completeness is the real improvement signal
+⁵ CheckM2 **always** runs, with or without --reference (unlike BUSCO): it measures
+  completeness AND contamination, a dimension neither QUAST nor BUSCO covers
+⁶ MultiQC combines FastQC + NanoStat + QUAST + CheckM2 from all samples into a
+  single report (results/multiqc/) — runs once, not per sample; BUSCO
+  and NanoComp are left out (see Aggregation section below)
 ```
 
-Ver [QC de reads](#qc-de-reads-raw-vs-trimmed) para detalhes de onde cada relatório é gerado.
+See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is generated.
 
-### Ferramentas utilizadas
+### Tools used
 
-| Etapa | Ferramenta | Função |
+| Step | Tool | Function |
 |---|---|---|
-| QC long reads (raw/trimmed) | NanoStat | Estatísticas antes e depois do NanoFilt |
-| QC long reads (comparativo) | NanoComp | HTML comparativo raw-vs-trimmed por amostra |
-| Filtragem long reads | NanoFilt | Q-score ≥ 10, comprimento ≥ 500 bp |
-| QC short reads (raw/trimmed) | FastQC | Relatório antes e depois do FASTP |
-| Filtragem short reads | FASTP | Q ≥ 20, comprimento ≥ 50 bp |
-| Downsampling | SeqKit | Limitar número de reads (opcional) |
-| Montagem (long reads) | Flye | Montagem *de novo* a partir de long reads, com polishing híbrido |
-| Montagem (short-read-only) | Unicycler | Montagem *de novo* só com Illumina (baseado em SPAdes), quando não há long reads |
-| Polishing long reads | Racon | Polishing rápido pré-Medaka (opcional, só no caminho Flye) |
-| Polishing long reads | Medaka 1.11.3 | Correção de erros com modelo de rede neural (só no caminho Flye) |
-| Avaliação (pré-polish) | QUAST | Métricas da montagem logo após Racon/Medaka (só caminho Flye — `qc/quast_prepolish/`) |
-| Avaliação (pré-polish, sem referência) | BUSCO | Completude gênica logo após Racon/Medaka (só caminho Flye, só sem `--reference` — `qc/busco_prepolish/`) |
-| Avaliação (pré-polish, sempre) | CheckM2 | Completude + contaminação logo após Racon/Medaka (só caminho Flye — `qc/checkm2_prepolish/`) |
-| Polishing short reads | **Polypolish** (padrão) | Correção final com Illumina, base a base (só no caminho Flye) |
-| Polishing short reads | NextPolish (alternativa) | Correção multi-round com Illumina, `--polisher nextpolish` (só no caminho Flye) |
-| Avaliação (pós-polish) | QUAST | Métricas da montagem final — pós-polish no caminho Flye (`qc/quast_postpolish/`), única chamada no caminho Unicycler (`qc/quast/`) |
-| Avaliação (pós-polish, sem referência) | BUSCO | Completude gênica final — pós-polish no caminho Flye (`qc/busco_postpolish/`), única chamada no caminho Unicycler (`qc/busco/`) — só sem `--reference` |
-| Avaliação (pós-polish, sempre) | CheckM2 | Completude + contaminação final — pós-polish no caminho Flye (`qc/checkm2_postpolish/`), única chamada no caminho Unicycler (`qc/checkm2/`) |
-| Agregação (fim do run) | MultiQC | Relatório único juntando FastQC, NanoStat, QUAST e CheckM2 de todas as amostras (`multiqc/`) |
+| Long read QC (raw/trimmed) | NanoStat | Statistics before and after NanoFilt |
+| Long read QC (comparative) | NanoComp | Comparative raw-vs-trimmed HTML per sample |
+| Long read filtering | NanoFilt | Q-score ≥ 10, length ≥ 500 bp |
+| Short read QC (raw/trimmed) | FastQC | Report before and after FASTP |
+| Short read filtering | FASTP | Q ≥ 20, length ≥ 50 bp |
+| Downsampling | SeqKit | Cap the number of reads (optional) |
+| Assembly (long reads) | Flye | *De novo* assembly from long reads, with hybrid polishing |
+| Assembly (short-read-only) | Unicycler | *De novo* assembly with Illumina only (SPAdes-based), when there are no long reads |
+| Long read polishing | Racon | Fast pre-Medaka polishing (optional, Flye path only) |
+| Long read polishing | Medaka 1.11.3 | Error correction with a neural network model (Flye path only) |
+| Evaluation (pre-polish) | QUAST | Assembly metrics right after Racon/Medaka (Flye path only — `qc/quast_prepolish/`) |
+| Evaluation (pre-polish, no reference) | BUSCO | Gene completeness right after Racon/Medaka (Flye path only, only without `--reference` — `qc/busco_prepolish/`) |
+| Evaluation (pre-polish, always) | CheckM2 | Completeness + contamination right after Racon/Medaka (Flye path only — `qc/checkm2_prepolish/`) |
+| Short read polishing | **Polypolish** (default) | Final base-by-base correction with Illumina (Flye path only) |
+| Short read polishing | NextPolish (alternative) | Multi-round correction with Illumina, `--polisher nextpolish` (Flye path only) |
+| Evaluation (post-polish) | QUAST | Final assembly metrics — post-polish on the Flye path (`qc/quast_postpolish/`), single call on the Unicycler path (`qc/quast/`) |
+| Evaluation (post-polish, no reference) | BUSCO | Final gene completeness — post-polish on the Flye path (`qc/busco_postpolish/`), single call on the Unicycler path (`qc/busco/`) — only without `--reference` |
+| Evaluation (post-polish, always) | CheckM2 | Final completeness + contamination — post-polish on the Flye path (`qc/checkm2_postpolish/`), single call on the Unicycler path (`qc/checkm2/`) |
+| Aggregation (end of run) | MultiQC | Single report combining FastQC, NanoStat, QUAST and CheckM2 from all samples (`multiqc/`) |
 
 ---
 
-## Instalação
+## Installation
 
-### Pré-requisitos
+### Prerequisites
 
-- [Mamba](https://mamba.readthedocs.io/), [Micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html) ou [Conda](https://docs.conda.io/) — o script de instalação detecta automaticamente qual está disponível
+- [Mamba](https://mamba.readthedocs.io/), [Micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html) or [Conda](https://docs.conda.io/) — the install script automatically detects whichever is available
 
-> O Nextflow é instalado automaticamente dentro do ambiente `bacflow-tools`. Não é necessário instalá-lo separadamente.
+> Nextflow is installed automatically inside the `bacflow-tools` environment. There is no need to install it separately.
 
-### Clonar e instalar ambientes
+### Clone and install environments
 
 ```bash
 git clone https://github.com/jlpitta/bacflow
 cd bacflow
 
-# instalar os ambientes conda (obrigatório antes da primeira execução)
+# install the conda environments (required before the first run)
 bash install_envs.sh
 ```
 
-O script detecta automaticamente `mamba`, `micromamba` ou `conda` (nessa ordem de preferência), instala os três ambientes (`bacflow-tools`, `bacflow-medaka`, `bacflow-checkm2`), baixa o banco de dados do CheckM2 (~1.7 GB, só na primeira vez — pula automaticamente se já existir) e exibe instruções para configurar o `nextflow` no terminal. Há duas opções:
+The script automatically detects `mamba`, `micromamba` or `conda` (in that order of preference), installs the three environments (`bacflow-tools`, `bacflow-medaka`, `bacflow-checkm2`), downloads the CheckM2 database (~1.7 GB, first time only — skipped automatically if it already exists) and prints instructions for setting up `nextflow` in your terminal. There are two options:
 
-**Opção A — alias permanente** (recomendado): adicione ao `~/.bashrc`:
+**Option A — permanent alias** (recommended): add to `~/.bashrc`:
 ```bash
 alias nextflow='mamba run -n bacflow-tools nextflow'
-# ou, se usar micromamba:
+# or, if using micromamba:
 alias nextflow='micromamba run -n bacflow-tools nextflow'
 ```
-Depois: `source ~/.bashrc`. A partir daí `nextflow` funciona diretamente em qualquer terminal.
+Then: `source ~/.bashrc`. From then on `nextflow` works directly in any terminal.
 
-**Opção B — ativar o ambiente manualmente** antes de cada uso:
+**Option B — activate the environment manually** before each use:
 ```bash
-mamba activate bacflow-tools   # ou: micromamba activate / conda activate
+mamba activate bacflow-tools   # or: micromamba activate / conda activate
 nextflow run bacflow.nf ...
 ```
 
 ```bash
-# verificar ambientes instalados
+# check installed environments
 mamba env list | grep bacflow
 # bacflow-tools    ~/miniforge3/envs/bacflow-tools
 # bacflow-medaka   ~/miniforge3/envs/bacflow-medaka
 # bacflow-checkm2  ~/miniforge3/envs/bacflow-checkm2
 ```
 
-> **Importante:** os módulos referenciam os ambientes pelo **caminho absoluto** (`$HOME/miniforge3/envs/bacflow-tools` / `bacflow-medaka` / `bacflow-checkm2`), assumindo a instalação padrão do Miniforge/Mambaforge no `$HOME` do usuário — não pelo nome nem pelo caminho do YAML (referenciar só pelo nome faz o Nextflow tentar *instalar um pacote* com esse nome do bioconda, em vez de reaproveitar o ambiente já criado). Se seu Conda/Mamba estiver instalado em outro local, ajuste o `conda` directive em cada `modules/local/*.nf`. A pré-instalação é obrigatória antes da primeira execução.
+> **Important:** modules reference the environments by their **absolute path** (`$HOME/miniforge3/envs/bacflow-tools` / `bacflow-medaka` / `bacflow-checkm2`), assuming a standard Miniforge/Mambaforge installation under the user's `$HOME` — not by name or by the YAML path (referencing by name alone makes Nextflow try to *install a package* with that name from bioconda, instead of reusing the environment you already created). If your Conda/Mamba is installed somewhere else, adjust the `conda` directive in each `modules/local/*.nf`. Pre-installation is mandatory before the first run.
 
 ---
 
-## Ambientes Conda
+## Conda environments
 
-| Ambiente | YAML | Ferramentas |
+| Environment | YAML | Tools |
 |---|---|---|
 | `bacflow-tools` | `envs/tools.yaml` | nextflow=26.04.6, nanofilt, nanostat, fastp, fastqc=0.12.1, nanocomp=1.25.6, busco=6.1.0, flye, unicycler, minimap2, racon, seqkit, samtools, polypolish, nextpolish, bwa, quast, multiqc=1.35 |
-| `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3, setuptools=69.5.1 (**isolada** — conflito TensorFlow/ONNX com bioconda) |
-| `bacflow-checkm2` | `envs/checkm2.yaml` | checkm2=1.1.0 (**isolada** — conflito real de dependências com `bacflow-tools`, descoberto na prática) |
+| `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3, setuptools=69.5.1 (**isolated** — TensorFlow/ONNX conflict with bioconda) |
+| `bacflow-checkm2` | `envs/checkm2.yaml` | checkm2=1.1.0 (**isolated** — real dependency conflict with `bacflow-tools`, discovered in practice) |
 
-O Medaka é mantido em ambiente isolado obrigatoriamente, pois suas dependências (TensorFlow, ONNX) conflitam com pacotes do canal bioconda. O pin de `setuptools=69.5.1` é necessário porque versões mais recentes removeram o módulo `pkg_resources`, do qual o `medaka=1.11.3` depende.
+Medaka is kept in an isolated environment out of necessity, since its dependencies (TensorFlow, ONNX) conflict with bioconda-channel packages. The `setuptools=69.5.1` pin is required because newer versions removed the `pkg_resources` module, which `medaka=1.11.3` depends on.
 
-O CheckM2 também precisa de ambiente isolado: tentar instalá-lo dentro do `bacflow-tools` gera um conflito de dependências irresolúvel (`abseil-cpp`/`libboost`, puxado pelas dependências de ML do CheckM2 — scikit-learn, lightgbm). Além do ambiente, o CheckM2 exige um banco de dados DIAMOND (~1.7 GB) baixado separadamente — o `install_envs.sh` já faz isso automaticamente (ver [Instalação](#instalação)).
+CheckM2 also needs an isolated environment: trying to install it inside `bacflow-tools` produces an unresolvable dependency conflict (`abseil-cpp`/`libboost`, pulled in by CheckM2's ML dependencies — scikit-learn, lightgbm). Besides the environment, CheckM2 requires a DIAMOND database (~1.7 GB) downloaded separately — `install_envs.sh` already does this automatically (see [Installation](#installation)).
 
-> `NanoComp` vem do pacote bioconda **`nanocomp`**, não `nanoplot` (que fornece o `NanoPlot`, uma ferramenta diferente — relatório detalhado de 1 dataset, sem comparação).
+> `NanoComp` comes from the bioconda package **`nanocomp`**, not `nanoplot` (which provides `NanoPlot`, a different tool — a detailed single-dataset report, without comparison).
 
 ---
 
-## Plataformas suportadas
+## Supported platforms
 
-Definido com `--platform` (padrão: `mgicyclone`):
+Set with `--platform` (default: `mgicyclone`):
 
-| Valor | Modo Flye | Modelo Medaka |
+| Value | Flye mode | Medaka model |
 |---|---|---|
 | `mgicyclone` | `nano-raw` | `r941_min_hac_g507` |
 | `ont` | `nano-hq` | `r1041_e82_400bps_hac_g632` |
-| `pacbio` | `pacbio-hifi` | *(sem Medaka)* |
+| `pacbio` | `pacbio-hifi` | *(no Medaka)* |
 
 ---
 
-## Modos de execução
+## Execution modes
 
-### `--mode denovo` (padrão)
+### `--mode denovo` (default)
 
-Monta o genoma do zero. Amostras com long reads usam Flye, seguido de polishing com Medaka e opcionalmente Polypolish ou NextPolish; amostras só com short reads usam Unicycler diretamente, sem etapas adicionais de polish.
+Assembles the genome from scratch. Samples with long reads use Flye, followed by polishing with Medaka and optionally Polypolish or NextPolish; short-read-only samples use Unicycler directly, with no extra polishing steps.
 
 ### `--mode reference`
 
-Usa um genoma de referência (`--reference ref.fasta`) como draft direto para o Medaka, pulando a etapa de montagem. Indicado para organismos bem caracterizados. Para espécies com alta divergência, prefira `denovo`. Requer `long_reads` em todas as amostras — não é compatível com montagem short-read-only.
+Uses a reference genome (`--reference ref.fasta`) as a direct draft for Medaka, skipping the assembly step. Suited to well-characterized organisms. For highly divergent species, prefer `denovo`. Requires `long_reads` for every sample — not compatible with short-read-only assembly.
 
 ---
 
-## Modos de input
+## Input modes
 
-O pipeline aceita duas formas de entrada, mutuamente exclusivas:
+The pipeline accepts two mutually exclusive input forms:
 
-### Single-sample — parâmetros diretos
+### Single-sample — direct parameters
 
-**Long reads + short reads (híbrido, Flye):**
+**Long reads + short reads (hybrid, Flye):**
 
 ```bash
 nextflow run bacflow.nf -resume \
     --t 32 \
     --long_reads lr.fastq.gz \
     --genome_size 5m \
-    --sample_name amostra01 \
+    --sample_name sample01 \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz
 ```
 
-**Somente short reads (short-read-only, Unicycler) — sem `--long_reads` nem `--genome_size`:**
+**Short reads only (short-read-only, Unicycler) — no `--long_reads` or `--genome_size`:**
 
 ```bash
 nextflow run bacflow.nf -resume \
     --t 32 \
-    --sample_name amostra01 \
+    --sample_name sample01 \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz
 ```
 
-O pipeline detecta automaticamente a ausência de `--long_reads` e monta com Unicycler, emitindo um aviso no log.
+The pipeline automatically detects the absence of `--long_reads` and assembles with Unicycler, logging a warning.
 
-### Multi-sample — samplesheet CSV
+### Multi-sample — CSV samplesheet
 
 ```bash
 nextflow run bacflow.nf -resume \
@@ -232,121 +231,121 @@ nextflow run bacflow.nf -resume \
     --samplesheet samples.csv
 ```
 
-**Exemplo 1 — somente long reads (sem polimento short-read):**
+**Example 1 — long reads only (no short-read polishing):**
 
 ```csv
 sample,long_reads,short_reads_1,short_reads_2,genome_size
-amostra01,data/A01/lr.fastq.gz,,,5m
-amostra02,data/A02/lr.fastq.gz,,,4.8m
-amostra03,data/A03/lr.fastq.gz,,,5m
+sample01,data/A01/lr.fastq.gz,,,5m
+sample02,data/A02/lr.fastq.gz,,,4.8m
+sample03,data/A03/lr.fastq.gz,,,5m
 ```
 
-Amostras sem `short_reads_1/2` seguem o fluxo Flye → Medaka → QUAST pré-polish → QUAST pós-polish (idêntico ao pré, já que não há polish pra aplicar), independente do `--polisher` configurado.
+Samples without `short_reads_1/2` follow the Flye → Medaka → QUAST pre-polish → QUAST post-polish flow (identical to pre-polish, since there is nothing to polish), regardless of the configured `--polisher`.
 
-**Exemplo 2 — long reads + short reads (com Polypolish por padrão):**
+**Example 2 — long reads + short reads (Polypolish by default):**
 
 ```csv
 sample,long_reads,short_reads_1,short_reads_2,genome_size
-amostra01,data/A01/lr.fastq.gz,data/A01/r1.fastq.gz,data/A01/r2.fastq.gz,5m
-amostra02,data/A02/lr.fastq.gz,data/A02/r1.fastq.gz,data/A02/r2.fastq.gz,5m
-amostra03,data/A03/lr.fastq.gz,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,4.8m
+sample01,data/A01/lr.fastq.gz,data/A01/r1.fastq.gz,data/A01/r2.fastq.gz,5m
+sample02,data/A02/lr.fastq.gz,data/A02/r1.fastq.gz,data/A02/r2.fastq.gz,5m
+sample03,data/A03/lr.fastq.gz,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,4.8m
 ```
 
-**Exemplo 3 — misto (híbrida + long-only + short-only na mesma samplesheet):**
+**Example 3 — mixed (hybrid + long-only + short-only in the same samplesheet):**
 
 ```csv
 sample,long_reads,short_reads_1,short_reads_2,genome_size
-amostra01,data/A01/lr.fastq.gz,data/A01/r1.fastq.gz,data/A01/r2.fastq.gz,5m
-amostra02,data/A02/lr.fastq.gz,,,4.8m
-amostra03,,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,
+sample01,data/A01/lr.fastq.gz,data/A01/r1.fastq.gz,data/A01/r2.fastq.gz,5m
+sample02,data/A02/lr.fastq.gz,,,4.8m
+sample03,,data/A03/r1.fastq.gz,data/A03/r2.fastq.gz,
 ```
 
-- `amostra01` (long + short): Flye → Medaka → QUAST pré-polish → Polypolish → QUAST pós-polish
-- `amostra02` (só long): Flye → Medaka → QUAST pré-polish → QUAST pós-polish (idêntico, sem polish — nenhuma amostra é derrubada silenciosamente do resultado por não ter short reads)
-- `amostra03` (só short): Unicycler → QUAST direto (chamada única), sem NanoFilt/Racon/Medaka/polish; `genome_size` pode ficar vazio, já que só o Flye usa esse parâmetro
+- `sample01` (long + short): Flye → Medaka → QUAST pre-polish → Polypolish → QUAST post-polish
+- `sample02` (long only): Flye → Medaka → QUAST pre-polish → QUAST post-polish (identical, no polishing — no sample is silently dropped from the results just for lacking short reads)
+- `sample03` (short only): Unicycler → QUAST directly (single call), no NanoFilt/Racon/Medaka/polish; `genome_size` can be left empty, since only Flye uses that parameter
 
-- Amostras processadas em **paralelo**, limitadas pelo `--t` global
-- `genome_size` pode ser coluna no CSV (por amostra) ou `--genome_size` como parâmetro global; só é exigido para amostras com `long_reads`
-- Saídas em `results/{sample}/`
-- `--mode reference` exige `long_reads` em **todas** as amostras da samplesheet — misturar com short-only nesse modo gera erro
+- Samples are processed in **parallel**, bounded by the global `--t`
+- `genome_size` can be a CSV column (per sample) or a global `--genome_size` parameter; it's only required for samples with `long_reads`
+- Outputs go to `results/{sample}/`
+- `--mode reference` requires `long_reads` for **every** sample in the samplesheet — mixing with short-only in that mode raises an error
 
 ---
 
-## Parâmetros
+## Parameters
 
-| Parâmetro | Padrão | Descrição |
+| Parameter | Default | Description |
 |---|---|---|
-| `--mode` | `denovo` | Modo: `denovo` ou `reference` |
-| `--long_reads` | — | FASTQ long reads. Se omitido (com `--short_reads_1/2` presentes), monta short-read-only via Unicycler; obrigatório em `--mode reference` |
-| `--samplesheet` | — | CSV multi-sample (alternativa a --long_reads); pode misturar amostras híbridas, long-only e short-only |
-| `--short_reads_1` | — | R1 Illumina. Sozinho (sem `--long_reads`), monta short-read-only; combinado com `--long_reads`, é usado no polishing |
-| `--short_reads_2` | — | R2 Illumina |
-| `--genome_size` | — | Tamanho estimado do genoma (ex: `5m`, `4.8m`, `2g`). Obrigatório apenas para amostras com `--long_reads` (usado pelo Flye) |
-| `--sample_name` | `sample` | Prefixo dos outputs e nome da subpasta em results/ |
-| `--platform` | `mgicyclone` | Plataforma sequenciadora |
-| `--use_racon` | `false` | Ativar polishing com Racon antes do Medaka |
-| `--polisher` | `polypolish` | Polidor short-read: `polypolish` (padrão), `nextpolish` ou `none` |
-| `--nextpolish_rounds` | `1` | Iterações do NextPolish (1–4; apenas com `--polisher nextpolish`) |
-| `--reference` | `null` | Draft para modo `reference`; referência comparativa QUAST no modo `denovo`. Quando **não** informado em modo `denovo`, ativa BUSCO pré/pós-polish em vez da comparação QUAST baseada em referência |
-| `--busco_lineage` | `bacteria_odb10` | Lineage do BUSCO (só usado quando `--reference` não é informado) |
-| `--checkm2_db` | `~/checkm2_db/CheckM2_database/uniref100.KO.1.dmnd` | Caminho do banco DIAMOND do CheckM2 (roda sempre, com ou sem `--reference`) |
-| `--medaka_model` | *(da plataforma)* | Sobrescreve o modelo Medaka padrão |
-| `--t` | — | Total de CPUs disponíveis |
-| `--min_quality` | `10` | Q-score mínimo NanoFilt |
-| `--min_length` | `500` | Comprimento mínimo de reads NanoFilt (bp) |
-| `--downsample` | `0` | Máx de reads para montagem (`0` = sem limite; ex: `200000` para economizar RAM) |
-| `--outdir` | `results` | Diretório de saída |
+| `--mode` | `denovo` | Mode: `denovo` or `reference` |
+| `--long_reads` | — | Long-read FASTQ. If omitted (with `--short_reads_1/2` present), assembles short-read-only via Unicycler; required in `--mode reference` |
+| `--samplesheet` | — | Multi-sample CSV (alternative to --long_reads); can mix hybrid, long-only and short-only samples |
+| `--short_reads_1` | — | Illumina R1. Alone (without `--long_reads`), assembles short-read-only; combined with `--long_reads`, used for polishing |
+| `--short_reads_2` | — | Illumina R2 |
+| `--genome_size` | — | Estimated genome size (e.g. `5m`, `4.8m`, `2g`). Required only for samples with `--long_reads` (used by Flye) |
+| `--sample_name` | `sample` | Output prefix and subfolder name under results/ |
+| `--platform` | `mgicyclone` | Sequencing platform |
+| `--use_racon` | `false` | Enable Racon polishing before Medaka |
+| `--polisher` | `polypolish` | Short-read polisher: `polypolish` (default), `nextpolish` or `none` |
+| `--nextpolish_rounds` | `1` | NextPolish iterations (1–4; only with `--polisher nextpolish`) |
+| `--reference` | `null` | Draft for `reference` mode; QUAST comparison reference in `denovo` mode. When **not** provided in `denovo` mode, enables BUSCO pre/post-polish instead of the reference-based QUAST comparison |
+| `--busco_lineage` | `bacteria_odb10` | BUSCO lineage (only used when `--reference` is not provided) |
+| `--checkm2_db` | `~/checkm2_db/CheckM2_database/uniref100.KO.1.dmnd` | Path to the CheckM2 DIAMOND database (always runs, with or without `--reference`) |
+| `--medaka_model` | *(platform-dependent)* | Overrides the default Medaka model |
+| `--t` | — | Total available CPUs |
+| `--min_quality` | `10` | Minimum NanoFilt Q-score |
+| `--min_length` | `500` | Minimum NanoFilt read length (bp) |
+| `--downsample` | `0` | Max reads for assembly (`0` = no limit; e.g. `200000` to save RAM) |
+| `--outdir` | `results` | Output directory |
 
 ---
 
-## QC de reads (raw vs. trimmed)
+## Read QC (raw vs. trimmed)
 
-Roda **automaticamente em todo run**, independente de qual dos 7 fluxos ou modo (`denovo`/`reference`) está em uso — não é controlado por flag, não bloqueia a montagem (executa em paralelo) e não é opcional.
+Runs **automatically on every run**, regardless of which of the 7 flows or mode (`denovo`/`reference`) is in use — it is not gated by a flag, does not block assembly (runs in parallel) and is not optional.
 
-| Tipo de read | Antes do filtro | Ferramenta | Depois do filtro | Onde comparar |
+| Read type | Before filtering | Tool | After filtering | Where to compare |
 |---|---|---|---|---|
-| Long reads | `NANOSTAT_RAW` sobre o FASTQ original | NanoFilt (Q/comprimento) | `NANOSTAT_TRIMMED` sobre `lr.filtered` | `NANOCOMP` — HTML único com os dois lado a lado |
-| Short reads | `FASTQC_RAW` sobre R1/R2 originais | FASTP (trim + filtro) | `FASTQC_TRIMMED` sobre R1/R2 limpos | Abrir os dois HTMLs do FastQC lado a lado |
+| Long reads | `NANOSTAT_RAW` on the original FASTQ | NanoFilt (Q/length) | `NANOSTAT_TRIMMED` on `lr.filtered` | `NANOCOMP` — single HTML with both side by side |
+| Short reads | `FASTQC_RAW` on the original R1/R2 | FASTP (trim + filter) | `FASTQC_TRIMMED` on the cleaned R1/R2 | Open both FastQC HTMLs side by side |
 
-- NanoStat/NanoComp usam os long reads **antes do `--downsample`** — downsample é redução de amostragem, não mudança de qualidade, então fica fora dessa comparação (mas o NanoFilt/filtro de qualidade já é capturado).
-- Amostras short-read-only (sem `long_reads`) só geram QC de short reads (FastQC); amostras híbridas ou long-only geram os dois.
-- Nenhum parâmetro novo — os thresholds usados no relatório "trimmed" são os mesmos de `--min_quality`/`--min_length` (NanoFilt) e os fixos do FASTP (Q≥20, comprimento≥50bp).
-
----
-
-## Agregação (MultiQC)
-
-Roda **uma única vez ao final do run**, depois de todas as amostras — diferente do resto do QC (que é por amostra), o `MULTIQC` é o único process de escopo do run inteiro. Saída em `results/multiqc/` (não `results/{sample}/multiqc/`).
-
-Junta num único relatório HTML: **FastQC** (raw/trimmed), **NanoStat** (raw/trimmed), **QUAST** (pré/pós-polish) e **CheckM2** (pré/pós-polish) de todas as amostras, lado a lado. **BUSCO e NanoComp ficam de fora de propósito** — BUSCO porque sua completude gênica já é melhor lida por amostra (e não é uma métrica que se preste a agregação simples entre amostras diferentes); NanoComp porque não tem parser nativo no MultiQC (já é um HTML comparativo individual, ver seção de QC acima).
-
-- Amostras são disambiguadas pelo nome da subpasta em `results/{sample}/` (via `multiqc --dirs --dirs-depth -2` sobre um symlink interno de profundidade fixa) — necessário porque ferramentas como FastQC nomeiam a saída a partir do nome do arquivo de entrada, não da amostra, e duas amostras podem usar arquivos com nomes idênticos (ex: `R1.fastq.gz` genérico).
-- Pin em `envs/tools.yaml` atualizado de `multiqc=1.21` para `multiqc=1.35` — a 1.21 não tinha módulo nativo para CheckM2 (confirmado testando `config.avail_modules`); a 1.35 tem.
+- NanoStat/NanoComp use the long reads **before `--downsample`** — downsampling is a subsampling reduction, not a quality change, so it's kept out of this comparison (but the NanoFilt quality filter is captured).
+- Short-read-only samples (no `long_reads`) only produce short-read QC (FastQC); hybrid or long-only samples produce both.
+- No new parameters — the thresholds used in the "trimmed" report are the same as `--min_quality`/`--min_length` (NanoFilt) and FASTP's fixed defaults (Q≥20, length≥50bp).
 
 ---
 
-## Dashboard de comparação
+## Aggregation (MultiQC)
 
-Roda **uma única vez ao final do run** (mesmo escopo do `MULTIQC`), gerando `results/dashboard.html` — um card por amostra comparando as métricas pré/pós-polish de verdade (QUAST, BUSCO, CheckM2), com veredito por métrica e badge do tipo de input usado.
+Runs **once at the end of the run**, after all samples — unlike the rest of the QC (which is per sample), `MULTIQC` is the only run-wide-scope process. Output in `results/multiqc/` (not `results/{sample}/multiqc/`).
 
-- **Badge de input**: cada card mostra se a amostra rodou como `Long + Short` (híbrida, caminho Flye), `Long only` (long-read-only, caminho Flye sem short reads) ou `Short only` (caminho Unicycler).
-- **Veredito por métrica**: cada linha/gráfico traz seu próprio veredito de melhora (não o veredito geral da amostra) — com um "piso de ruído" para não marcar como piora/melhora oscilações irrelevantes.
-- **Slope charts em SVG**: 4 gráficos gerados dinamicamente — QUAST (mismatches), BUSCO (%Complete), CheckM2 (Completeness), CheckM2 (Contamination).
-- Implementado em `bin/summarize_sample.py` (parser por amostra, gera `{sample}.summary.json`), `bin/generate_dashboard.py` (agrega os JSONs e monta o HTML) e `assets/dashboard_template.html` (template real, sem dados fictícios).
-- Amostras são processadas por `SAMPLE_SUMMARY` (por amostra, `modules/local/dashboard.nf`) e agregadas por `DASHBOARD` (uma vez por run, mesmo padrão do `MULTIQC`).
-- Validado em 3 cenários reais (22/07/2026): `--reference`/Flye, sem `--reference`/BUSCO, e multi-amostra via `--samplesheet` misturando Flye+Unicycler no mesmo run (valida o `.mix()` de canais sob a restrição DSL2 de processo chamado uma única vez).
+Combines into a single HTML report: **FastQC** (raw/trimmed), **NanoStat** (raw/trimmed), **QUAST** (pre/post-polish) and **CheckM2** (pre/post-polish) from all samples, side by side. **BUSCO and NanoComp are deliberately left out** — BUSCO because its gene completeness is better read per sample (and isn't a metric well suited to simple cross-sample aggregation); NanoComp because it has no native MultiQC parser (it is already an individual comparative HTML, see the QC section above).
+
+- Samples are disambiguated by their subfolder name under `results/{sample}/` (via `multiqc --dirs --dirs-depth -2` over an internal fixed-depth symlink) — necessary because tools like FastQC name their output after the input filename, not the sample, and two samples can use files with identical names (e.g. a generic `R1.fastq.gz`).
+- Pin in `envs/tools.yaml` updated from `multiqc=1.21` to `multiqc=1.35` — 1.21 had no native CheckM2 module (confirmed by testing `config.avail_modules`); 1.35 does.
 
 ---
 
-## Os 7 fluxos de execução
+## Comparison dashboard
 
-Cada fluxo pode ser executado de duas formas:
-- **Single-sample** — parâmetros diretos na linha de comando
-- **Multi-sample** — samplesheet CSV com múltiplas amostras em paralelo
+Runs **once at the end of the run** (same scope as `MULTIQC`), generating `results/dashboard.html` — one card per sample comparing real pre/post-polish metrics (QUAST, BUSCO, CheckM2), with a per-metric verdict and a badge for the input type used.
 
-### Modo `denovo` / Flye
+- **Input badge**: each card shows whether the sample ran as `Long + Short` (hybrid, Flye path), `Long only` (long-read-only, Flye path with no short reads) or `Short only` (Unicycler path).
+- **Per-metric verdict**: each row/chart carries its own improvement verdict (not the sample's overall verdict) — with a "noise floor" so irrelevant oscillations aren't flagged as improvement or regression.
+- **SVG slope charts**: 4 dynamically generated charts — QUAST (mismatches), BUSCO (%Complete), CheckM2 (Completeness), CheckM2 (Contamination).
+- Implemented in `bin/summarize_sample.py` (per-sample parser, generates `{sample}.summary.json`), `bin/generate_dashboard.py` (aggregates the JSONs and builds the HTML) and `assets/dashboard_template.html` (the real template, no mock data).
+- Samples are processed by `SAMPLE_SUMMARY` (per sample, `modules/local/dashboard.nf`) and aggregated by `DASHBOARD` (once per run, same pattern as `MULTIQC`).
+- Validated on 3 real scenarios (2026-07-22): `--reference`/Flye, no `--reference`/BUSCO, and multi-sample via `--samplesheet` mixing Flye+Unicycler in the same run (validates channel `.mix()` under DSL2's single-invocation-per-process constraint).
 
-**Fluxo 1 — Mínimo: Flye + Medaka**
+---
+
+## The 7 execution flows
+
+Each flow can be run in two ways:
+- **Single-sample** — direct command-line parameters
+- **Multi-sample** — CSV samplesheet with multiple samples in parallel
+
+### `denovo` mode / Flye
+
+**Flow 1 — Minimal: Flye + Medaka**
 
 ```bash
 # single-sample
@@ -354,7 +353,7 @@ nextflow run bacflow.nf -resume \
     --t 16 \
     --long_reads lr.fastq.gz \
     --genome_size 5m \
-    --sample_name amostra01
+    --sample_name sample01
 
 # multi-sample (samples.csv: sample,long_reads,genome_size)
 nextflow run bacflow.nf -resume \
@@ -362,7 +361,7 @@ nextflow run bacflow.nf -resume \
     --samplesheet samples.csv
 ```
 
-**Fluxo 2 — Com Racon: Flye + Racon + Medaka**
+**Flow 2 — With Racon: Flye + Racon + Medaka**
 
 ```bash
 # single-sample
@@ -370,7 +369,7 @@ nextflow run bacflow.nf -resume \
     --t 16 \
     --long_reads lr.fastq.gz \
     --genome_size 5m \
-    --sample_name amostra01 \
+    --sample_name sample01 \
     --use_racon
 
 # multi-sample
@@ -380,9 +379,9 @@ nextflow run bacflow.nf -resume \
     --use_racon
 ```
 
-**Fluxo 3 — Padrão-ouro: Flye + Medaka + Polypolish**
+**Flow 3 — Gold standard: Flye + Medaka + Polypolish**
 
-> Polypolish é o padrão quando short reads são fornecidas. Nenhum parâmetro extra necessário.
+> Polypolish is the default whenever short reads are provided. No extra parameter needed.
 
 ```bash
 # single-sample
@@ -392,7 +391,7 @@ nextflow run bacflow.nf -resume \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz \
     --genome_size 5m \
-    --sample_name amostra01
+    --sample_name sample01
 
 # multi-sample (samples.csv: sample,long_reads,short_reads_1,short_reads_2,genome_size)
 nextflow run bacflow.nf -resume \
@@ -400,7 +399,7 @@ nextflow run bacflow.nf -resume \
     --samplesheet samples.csv
 ```
 
-**Fluxo 4 — Completo: Flye + Racon + Medaka + Polypolish**
+**Flow 4 — Full: Flye + Racon + Medaka + Polypolish**
 
 ```bash
 # single-sample
@@ -410,7 +409,7 @@ nextflow run bacflow.nf -resume \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz \
     --genome_size 5m \
-    --sample_name amostra01 \
+    --sample_name sample01 \
     --use_racon
 
 # multi-sample
@@ -420,11 +419,11 @@ nextflow run bacflow.nf -resume \
     --use_racon
 ```
 
-### Modo `denovo` / Unicycler (short-read-only)
+### `denovo` mode / Unicycler (short-read-only)
 
-> Automático: qualquer amostra sem `long_reads` (e com `short_reads_1`/`2`) monta direto com Unicycler, sem Racon/Medaka/polish adicional. Não existe flag `--assembler` — a escolha é sempre pelos dados disponíveis.
+> Automatic: any sample with no `long_reads` (and with `short_reads_1`/`2`) is assembled directly with Unicycler, with no extra Racon/Medaka/polish. There is no `--assembler` flag — the choice is always driven by the available data.
 
-**Fluxo 5 — Unicycler (short-read-only)**
+**Flow 5 — Unicycler (short-read-only)**
 
 ```bash
 # single-sample
@@ -432,17 +431,17 @@ nextflow run bacflow.nf -resume \
     --t 32 \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz \
-    --sample_name amostra01
+    --sample_name sample01
 
-# multi-sample (samples.csv: sample,long_reads,short_reads_1,short_reads_2,genome_size — long_reads e genome_size vazios)
+# multi-sample (samples.csv: sample,long_reads,short_reads_1,short_reads_2,genome_size — long_reads and genome_size empty)
 nextflow run bacflow.nf -resume \
     --t 64 \
     --samplesheet samples.csv
 ```
 
-### Modo `reference`
+### `reference` mode
 
-**Fluxo 6 — Referência + Medaka**
+**Flow 6 — Reference + Medaka**
 
 ```bash
 # single-sample
@@ -451,7 +450,7 @@ nextflow run bacflow.nf -resume \
     --mode reference \
     --long_reads lr.fastq.gz \
     --reference ref.fasta \
-    --sample_name amostra01
+    --sample_name sample01
 
 # multi-sample
 nextflow run bacflow.nf -resume \
@@ -461,7 +460,7 @@ nextflow run bacflow.nf -resume \
     --reference ref.fasta
 ```
 
-**Fluxo 7 — Referência + Medaka + Polypolish**
+**Flow 7 — Reference + Medaka + Polypolish**
 
 ```bash
 # single-sample
@@ -472,7 +471,7 @@ nextflow run bacflow.nf -resume \
     --short_reads_1 r1.fastq.gz \
     --short_reads_2 r2.fastq.gz \
     --reference ref.fasta \
-    --sample_name amostra01
+    --sample_name sample01
 
 # multi-sample
 nextflow run bacflow.nf -resume \
@@ -482,88 +481,88 @@ nextflow run bacflow.nf -resume \
     --reference ref.fasta
 ```
 
-### Usar NextPolish em vez de Polypolish
+### Using NextPolish instead of Polypolish
 
-Para qualquer fluxo que utilize short reads, substitua o polidor padrão com:
+For any flow that uses short reads, swap the default polisher with:
 
 ```bash
 --polisher nextpolish
-# opcional: --nextpolish_rounds 3
+# optional: --nextpolish_rounds 3
 ```
 
 ---
 
-## Qual fluxo escolher?
+## Which flow should I use?
 
 ```
-Tenho só long reads?
-  └─► Fluxo 1 (Flye + Medaka) — mínimo viável
+Do I only have long reads?
+  └─► Flow 1 (Flye + Medaka) — minimal viable
 
-Tenho long + short reads?
-  └─► Fluxo 3 (Flye + Medaka + Polypolish) — padrão-ouro
-      └─► Máxima qualidade: Fluxo 4 (+ Racon)
+Do I have long + short reads?
+  └─► Flow 3 (Flye + Medaka + Polypolish) — gold standard
+      └─► Maximum quality: Flow 4 (+ Racon)
 
-Tenho só short reads (sem long reads)?
-  └─► Fluxo 5 (Unicycler short-read-only) — único caminho possível nesse caso
+Do I only have short reads (no long reads)?
+  └─► Flow 5 (Unicycler short-read-only) — the only possible path in this case
 
-Genoma bem caracterizado / referência confiável disponível?
-  └─► Fluxo 6 ou 7 (modo reference) — mais rápido, requer long reads em todas as amostras
+Well-characterized genome / reliable reference available?
+  └─► Flow 6 or 7 (reference mode) — faster, requires long reads for every sample
 
-Várias amostras ao mesmo tempo, com perfis diferentes (híbrida/long-only/short-only)?
-  └─► Uma única --samplesheet samples.csv resolve todos — o assembler é escolhido
-      automaticamente por amostra, sem precisar rodar comandos separados
+Several samples at once, with different profiles (hybrid/long-only/short-only)?
+  └─► A single --samplesheet samples.csv handles all of them — the assembler is chosen
+      automatically per sample, no need to run separate commands
 ```
 
 ---
 
-## Controle de CPUs
+## CPU control
 
-O parâmetro `--t` define o total de CPUs desejadas. O pipeline distribui automaticamente:
+The `--t` parameter sets the desired total CPUs. The pipeline distributes them automatically:
 
-| Nível | Processos | CPUs |
+| Level | Processes | CPUs |
 |---|---|---|
-| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST (+ pré/pós-polish) | `t / 4` |
-| `process_medium` | Racon, Medaka, Polypolish, NextPolish, BUSCO, CheckM2 (+ pré/pós-polish) | `t / 2` |
-| `process_high` | Flye, Unicycler | `t` (todos) |
+| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST (+ pre/post-polish) | `t / 4` |
+| `process_medium` | Racon, Medaka, Polypolish, NextPolish, BUSCO, CheckM2 (+ pre/post-polish) | `t / 2` |
+| `process_high` | Flye, Unicycler | `t` (all) |
 
-Exemplo com `--t 32`: NanoFilt + FASTP + os QC (FastQC/NanoStat/NanoComp) rodam em paralelo (8 CPUs cada), Flye/Unicycler usa todas as 32.
+Example with `--t 32`: NanoFilt + FASTP + the QC steps (FastQC/NanoStat/NanoComp) run in parallel (8 CPUs each), Flye/Unicycler uses all 32.
 
-`--t` escala pra qualquer servidor (`--t 100`, `--t 256` etc.), mas é **automaticamente limitado aos cores reais da máquina** (`Runtime.availableProcessors()`, detectado em tempo de execução no `nextflow.config`). Se você passar `--t 100` num servidor com apenas 32 CPUs, o pipeline usa no máximo 32 e emite um aviso no log — não ultrapassa o hardware disponível.
+`--t` scales to any server (`--t 100`, `--t 256`, etc.), but is **automatically capped to the machine's real cores** (`Runtime.availableProcessors()`, detected at runtime in `nextflow.config`). If you pass `--t 100` on a server with only 32 CPUs, the pipeline uses at most 32 and logs a warning — it never exceeds the available hardware.
 
 ---
 
-## Profiles (gerenciador de pacotes)
+## Profiles (package manager)
 
-**Mamba é o padrão** — configurado diretamente no `nextflow.config`. Profiles servem apenas para sobrescrever quando necessário.
+**Mamba is the default** — configured directly in `nextflow.config`. Profiles only exist to override it when needed.
 
 ```groovy
 // nextflow.config
 conda.enabled  = true
-conda.useMamba = true   // mamba é o default
+conda.useMamba = true   // mamba is the default
 
 profiles {
     conda      { conda.useMamba = false }
-    mamba      { /* igual ao padrão */ }
+    mamba      { /* same as default */ }
     micromamba { conda.mambaBin = 'micromamba' }
 }
 ```
 
-| Situação | Comando |
+| Situation | Command |
 |---|---|
-| Mamba (padrão) | `nextflow run bacflow.nf ...` |
+| Mamba (default) | `nextflow run bacflow.nf ...` |
 | Conda | `nextflow run bacflow.nf -profile conda ...` |
 | Micromamba | `nextflow run bacflow.nf -profile micromamba ...` |
 
 ---
 
-## Testando o pipeline
+## Testing the pipeline
 
-O repositório inclui dados de teste prontos em [`genome_test/`](genome_test/) — não é preciso ter dados próprios pra validar a instalação:
+The repository ships with ready-to-use test data in [`genome_test/`](genome_test/) — you don't need your own data to validate the installation:
 
-| Dataset | O quê | Uso |
+| Dataset | What | Use |
 |---|---|---|
-| `mycoplasma_genitalium_synthetic/` | Reads simulados a partir de um genoma real (580 kb) | Smoke test rápido (poucos minutos) |
-| `staphylococcus_aureus_real/` | Reads ONT + Illumina **100% reais**, mesma cepa, subamostrados a ~25x, contra referência de cepa diferente | Validação de verdade do polimento (mais lento, genoma de 2.8 Mb) |
+| `mycoplasma_genitalium_synthetic/` | Simulated reads from a real genome (580 kb) | Quick smoke test (a few minutes) |
+| `staphylococcus_aureus_real/` | **100% real** ONT + Illumina reads, same strain, subsampled to ~25x, against a different strain's reference | Real polishing validation (slower, 2.8 Mb genome) |
 
 ```bash
 nextflow run bacflow.nf --t 4 \
@@ -571,32 +570,32 @@ nextflow run bacflow.nf --t 4 \
     --short_reads_1 genome_test/mycoplasma_genitalium_synthetic/short_reads_1.fastq.gz \
     --short_reads_2 genome_test/mycoplasma_genitalium_synthetic/short_reads_2.fastq.gz \
     --genome_size 580000 \
-    --sample_name teste \
+    --sample_name test \
     --reference genome_test/mycoplasma_genitalium_synthetic/reference.fasta
 ```
 
-Ver [`genome_test/README.md`](genome_test/README.md) para detalhes de origem, accessions e um exemplo real de resultado (melhora do polish medida por QUAST e CheckM2).
+See [`genome_test/README.md`](genome_test/README.md) for details on origin, accessions, and a real example of results (polishing improvement measured by QUAST and CheckM2).
 
 ---
 
-## Estrutura de arquivos
+## File structure
 
 ```
 bacflow/
-├── bacflow.nf          # script principal DSL2
-├── nextflow.config           # configuração global, parâmetros, profiles, CPUs
-├── install_envs.sh           # pré-instala os ambientes conda
+├── bacflow.nf                 # main DSL2 script
+├── nextflow.config           # global config, parameters, profiles, CPUs
+├── install_envs.sh           # pre-installs the conda environments
 ├── envs/
 │   ├── tools.yaml            # → bacflow-tools
-│   ├── medaka.yaml           # → bacflow-medaka (isolada)
-│   └── checkm2.yaml          # → bacflow-checkm2 (isolada)
-├── genome_test/               # dados de teste prontos (ver Testando o pipeline)
+│   ├── medaka.yaml           # → bacflow-medaka (isolated)
+│   └── checkm2.yaml          # → bacflow-checkm2 (isolated)
+├── genome_test/               # ready-to-use test data (see Testing the pipeline)
 │   ├── mycoplasma_genitalium_synthetic/
 │   └── staphylococcus_aureus_real/
 └── modules/local/
     ├── nanofilt.nf
     ├── nanostat.nf        # NANOSTAT_RAW + NANOSTAT_TRIMMED
-    ├── nanocomp.nf        # comparativo raw-vs-trimmed (long reads)
+    ├── nanocomp.nf        # raw-vs-trimmed comparison (long reads)
     ├── fastp.nf
     ├── fastqc.nf          # FASTQC_RAW + FASTQC_TRIMMED
     ├── seqkit_downsample.nf
@@ -613,12 +612,12 @@ bacflow/
 
 ---
 
-## Estrutura de resultados
+## Results structure
 
 ```
 results/
-├── dashboard.html                        card por amostra, QUAST/BUSCO/CheckM2 pré/pós-polish + badge de input (run inteiro, todas as amostras)
-├── multiqc/                              multiqc_report.html, multiqc_data/ (run inteiro, todas as amostras)
+├── dashboard.html                        per-sample card, QUAST/BUSCO/CheckM2 pre/post-polish + input badge (whole run, all samples)
+├── multiqc/                              multiqc_report.html, multiqc_data/ (whole run, all samples)
 └── {sample}/
     ├── qc/
     │   ├── nanostat_raw/                     {sample}.nanostat_raw.txt
@@ -628,81 +627,81 @@ results/
     │   ├── fastqc_raw/                       *_fastqc.html, *_fastqc.zip
     │   ├── fastp/                            {sample}.fastp.html/.json, *.clean.fastq.gz
     │   ├── fastqc_trimmed/                   *_fastqc.html, *_fastqc.zip
-    │   ├── quast_prepolish/quast_output/     report.html, report.tsv, ... (só caminho Flye, logo após Racon/Medaka)
-    │   ├── quast_postpolish/quast_output/    report.html, report.tsv, ... (só caminho Flye, após Polypolish/NextPolish)
-    │   ├── quast/quast_output/               report.html, report.tsv, ... (só caminho Unicycler, chamada única)
-    │   ├── busco_prepolish/busco_output/     short_summary.txt, full_table.tsv, ... (só caminho Flye, sem --reference)
-    │   ├── busco_postpolish/busco_output/    short_summary.txt, full_table.tsv, ... (só caminho Flye, sem --reference)
-    │   ├── busco/busco_output/               short_summary.txt, full_table.tsv, ... (só caminho Unicycler, sem --reference)
-    │   ├── checkm2_prepolish/checkm2_output/   quality_report.tsv, ... (só caminho Flye, sempre)
-    │   ├── checkm2_postpolish/checkm2_output/  quality_report.tsv, ... (só caminho Flye, sempre)
-    │   └── checkm2/checkm2_output/           quality_report.tsv, ... (só caminho Unicycler, sempre)
+    │   ├── quast_prepolish/quast_output/     report.html, report.tsv, ... (Flye path only, right after Racon/Medaka)
+    │   ├── quast_postpolish/quast_output/    report.html, report.tsv, ... (Flye path only, after Polypolish/NextPolish)
+    │   ├── quast/quast_output/               report.html, report.tsv, ... (Unicycler path only, single call)
+    │   ├── busco_prepolish/busco_output/     short_summary.txt, full_table.tsv, ... (Flye path only, without --reference)
+    │   ├── busco_postpolish/busco_output/    short_summary.txt, full_table.tsv, ... (Flye path only, without --reference)
+    │   ├── busco/busco_output/               short_summary.txt, full_table.tsv, ... (Unicycler path only, without --reference)
+    │   ├── checkm2_prepolish/checkm2_output/   quality_report.tsv, ... (Flye path only, always)
+    │   ├── checkm2_postpolish/checkm2_output/  quality_report.tsv, ... (Flye path only, always)
+    │   └── checkm2/checkm2_output/           quality_report.tsv, ... (Unicycler path only, always)
     ├── assembly/
     │   ├── flye/               {sample}.assembly.fasta (+ flye_output/assembly_info.txt)
-    │   └── unicycler/          {sample}.assembly.fasta (caminho short-only)
+    │   └── unicycler/          {sample}.assembly.fasta (short-only path)
     └── polishing/
-        ├── racon/               {sample}.racon.fasta (opcional)
+        ├── racon/               {sample}.racon.fasta (optional)
         ├── medaka/              {sample}.medaka.fasta
-        ├── polypolish/          {sample}.polypolish.fasta (padrão)
-        └── nextpolish/          {sample}.nextpolish.fasta (alternativa, --polisher nextpolish)
+        ├── polypolish/          {sample}.polypolish.fasta (default)
+        └── nextpolish/          {sample}.nextpolish.fasta (alternative, --polisher nextpolish)
 ```
 
-Uma amostra só gera **um** dos pares de cada avaliação: `_prepolish/`+`_postpolish/` se veio pelo caminho Flye (denovo ou reference), ou a chamada única se veio pelo caminho Unicycler. Diretórios `busco*/` só existem quando `--reference` não foi informado; `checkm2*/` existem sempre.
+A given sample only produces **one** of each evaluation pair: `_prepolish/`+`_postpolish/` if it went through the Flye path (denovo or reference), or the single call if it went through the Unicycler path. `busco*/` directories only exist when `--reference` was not provided; `checkm2*/` always exist.
 
-Estrutura validada com execução real de ponta a ponta em 18–20/07/2026: dados sintéticos nos 3 caminhos (denovo híbrido, reference, short-only) e nos cenários com/sem `--reference`; dados 100% reais (`genome_test/staphylococcus_aureus_real/`) confirmando melhora real do polish — indels 120→56/100kbp (QUAST), completude 90.7%→100.0% e contaminação 8.53%→0.05% (CheckM2).
+Structure validated with a real end-to-end run on 2026-07-18–20: synthetic data on all 3 paths (hybrid denovo, reference, short-only) and both with/without `--reference` scenarios; 100% real data (`genome_test/staphylococcus_aureus_real/`) confirming a real polishing improvement — indels 120→56/100kbp (QUAST), completeness 90.7%→100.0% and contamination 8.53%→0.05% (CheckM2).
 
 ---
 
-## Regras importantes
+## Important rules
 
-| Regra | Motivo |
+| Rule | Reason |
 |---|---|
-| **Nunca** rodar Racon após Medaka | Racon reintroduz erros que o Medaka já corrigiu |
-| **Nunca** rodar Polypolish após NextPolish | Degrada a qualidade — a ordem importa |
-| **Sempre** manter Medaka em ambiente isolado | TensorFlow/ONNX conflita com pacotes bioconda |
-| **Sempre** pré-instalar os envs antes de rodar | Módulos referenciam por caminho absoluto (`$HOME/miniforge3/envs/...`), não pelo YAML nem por nome |
-| Ambientes conda assumem Miniforge/Mambaforge instalado em `$HOME/miniforge3/` | Referenciar só pelo nome faz o Nextflow tentar *instalar* um pacote bioconda com esse nome em vez de reaproveitar o ambiente local — ajustar o `conda` directive nos módulos se usar outro local de instalação |
-| Amostras short-only (Unicycler) **nunca** passam por Polypolish/NextPolish | Unicycler já incorpora os short reads na montagem — polish adicional seria redundante |
-| Usar `-resume` sempre que possível | Retoma do ponto onde parou sem reprocessar etapas concluídas |
+| **Never** run Racon after Medaka | Racon reintroduces errors that Medaka already fixed |
+| **Never** run Polypolish after NextPolish | Degrades quality — order matters |
+| **Always** keep Medaka in an isolated environment | TensorFlow/ONNX conflicts with bioconda packages |
+| **Always** pre-install the envs before running | Modules reference them by absolute path (`$HOME/miniforge3/envs/...`), not by the YAML or by name |
+| Conda environments assume Miniforge/Mambaforge installed at `$HOME/miniforge3/` | Referencing by name alone makes Nextflow try to *install* a bioconda package with that name instead of reusing the local environment — adjust the `conda` directive in the modules if you use a different install location |
+| Short-only samples (Unicycler) **never** go through Polypolish/NextPolish | Unicycler already incorporates the short reads into the assembly — extra polishing would be redundant |
+| Use `-resume` whenever possible | Resumes from where it stopped without reprocessing completed steps |
 
 ---
 
-## Dicas de uso
+## Usage tips
 
-**Retomar execução interrompida:**
+**Resume an interrupted run:**
 ```bash
 nextflow run bacflow.nf -resume ...
-# requer: process.cache = lenient  +  workDir fixo no nextflow.config
+# requires: process.cache = lenient  +  a fixed workDir in nextflow.config
 ```
 
-**Economizar RAM com genomas grandes:**
+**Save RAM with large genomes:**
 ```bash
 --downsample 200000
 ```
 
-**Usar NextPolish com múltiplos rounds:**
+**Use NextPolish with multiple rounds:**
 ```bash
 --polisher nextpolish --nextpolish_rounds 3
 ```
 
-**Desativar polimento short-read:**
+**Disable short-read polishing:**
 ```bash
 --polisher none
 ```
 
-**Modelo Medaka personalizado:**
+**Custom Medaka model:**
 ```bash
 --medaka_model r1041_e82_400bps_sup_g615
 ```
 
-**Usar referência como comparativo no QUAST (modo denovo):**
+**Use a reference as a QUAST comparison (denovo mode):**
 ```bash
---reference referencia_conhecida.fasta
+--reference known_reference.fasta
 ```
 
 ---
 
-## Referência
+## Reference
 
 Luan, T. et al. (2024). *A hybrid genome assembly and polishing pipeline for long-read sequencing data*. BMC Genomics, 25, 742.
 [https://doi.org/10.1186/s12864-024-10582-x](https://doi.org/10.1186/s12864-024-10582-x)
