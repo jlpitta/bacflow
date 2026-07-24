@@ -24,6 +24,22 @@ include { CHECKM2; CHECKM2_PREPOLISH; CHECKM2_POSTPOLISH } from './modules/local
 include { MULTIQC } from './modules/local/multiqc'
 include { SAMPLE_SUMMARY; DASHBOARD } from './modules/local/dashboard'
 
+// ─── banner ──────────────────────────────────────────────────────────────────
+// Plain text, no ANSI colors — this also gets written to .nextflow.log and any
+// redirected run log, where color escape codes would just show up as garbage.
+def bacflow_banner() {
+    '''
+██████╗   █████╗   ██████╗ ███████╗ ██╗       ██████╗  ██╗    ██╗
+██╔══██╗ ██╔══██╗ ██╔════╝ ██╔════╝ ██║      ██╔═══██╗ ██║    ██║
+██████╔╝ ███████║ ██║      █████╗   ██║      ██║   ██║ ██║ █╗ ██║
+██╔══██╗ ██╔══██║ ██║      ██╔══╝   ██║      ██║   ██║ ██║███╗██║
+██████╔╝ ██║  ██║ ╚██████╗ ██║      ███████╗ ╚██████╔╝ ╚███╔███╔╝
+╚═════╝  ╚═╝  ╚═╝  ╚═════╝ ╚═╝      ╚══════╝  ╚═════╝   ╚══╝╚══╝
+
+                                by João Pitta and Beatriz Toscano
+'''
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 def platform_defaults(platform) {
@@ -138,6 +154,8 @@ def parse_samplesheet(csv_file) {
 // ─── main workflow ───────────────────────────────────────────────────────────
 
 workflow {
+
+    log.info bacflow_banner()
 
     if (params.help) { help_message(); exit 0 }
 
