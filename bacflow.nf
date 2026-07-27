@@ -167,6 +167,20 @@ workflow {
         log.warn "Requested --t ${params.t} exceeds available CPUs (${max_cpus}) on this machine — capping to ${max_cpus}."
     }
 
+    // ── database readiness preflight ─────────────────────────────────────────
+    // install_envs.sh downloads CheckM2/Bakta (and GTDB-Tk, once wired into
+    // the pipeline) in the background via download_databases.sh — a run
+    // started before a download finishes would otherwise fail deep inside
+    // CHECKM2/BAKTA with a confusing error, so check up front instead.
+    def db_status_dir = "${projectDir}/db_status"
+    ['checkm2', 'bakta'].each { db ->
+        if (!file("${db_status_dir}/${db}.done").exists()) {
+            error "${db} database not ready yet (${db_status_dir}/${db}.done missing). " +
+                  "It may still be downloading in the background — check logs/db_downloads.log, " +
+                  "or run install_envs.sh if you haven't yet."
+        }
+    }
+
     // resolve platform defaults
     def flye_mode    = resolved_flye_mode(params)
     def medaka_model = resolved_medaka_model(params)

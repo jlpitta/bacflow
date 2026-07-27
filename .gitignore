@@ -5,3 +5,5 @@ work_test_*/
 test_run_*/
 test_run_c_launch.log
 test_matrix_logs/
+logs/
+db_status/
