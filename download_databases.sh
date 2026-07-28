@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Baixa CheckM2/Bakta/GTDB-Tk em sequência, sem bloquear o install_envs.sh que
+# Baixa CheckM2/Bakta/GTDB-Tk/AMRFinderPlus em sequência, sem bloquear o install_envs.sh que
 # o dispara em background (nohup + disown). Idempotente: cada base marca
 # db_status/<nome>.done ao terminar, e é pulada se o marcador já existir.
 # Pode ser rodado sozinho também (ex: pra retomar depois de uma falha).
@@ -97,6 +97,26 @@ else
             echo "    falha na descompactação — tarball mantido em ${GTDBTK_TARBALL} pra não perder o download."
         fi
     fi
+fi
+
+echo "=== $(date -Iseconds) — AMRFinderPlus ==="
+# Banco próprio (não o embutido no Bakta) — versionado independente, pra não
+# acoplar a atualização do Bakta com o módulo de AMR do bacflow. Usa o env
+# bacflow-bakta mesmo (já traz amrfinder_update como dependência do Bakta),
+# sem criar um quarto ambiente conda só pra isso.
+AMRFINDER_DIR="${HOME}/amrfinder_db"
+if [ -f "${DB_STATUS_DIR}/amrfinder.done" ]; then
+    echo "    já concluído, pulando."
+elif [ -L "${AMRFINDER_DIR}/latest" ] || { [ -d "${AMRFINDER_DIR}" ] && [ -n "$(find "${AMRFINDER_DIR}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)" ]; }; then
+    echo "    banco já presente em ${AMRFINDER_DIR}, marcando sem baixar de novo."
+    touch "${DB_STATUS_DIR}/amrfinder.done"
+else
+    conda activate bacflow-bakta
+    if retry_cmd amrfinder_update -d "${AMRFINDER_DIR}"; then
+        touch "${DB_STATUS_DIR}/amrfinder.done"
+        echo "    concluído."
+    fi
+    conda deactivate
 fi
 
 echo "=== $(date -Iseconds) — downloads finalizados ==="
