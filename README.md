@@ -73,7 +73,7 @@ A single `--samplesheet` can freely mix hybrid, long-only and short-only samples
 ```
 Does the sample have long_reads?
 │
-├── YES ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opt.) ──► [Medaka] ──► [QUAST³/BUSCO⁴/CheckM2⁵ pre-polish]
+├── YES ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opt.) ──► [Medaka] ──► [QUAST³/BUSCO⁴/CheckM2⁵/AMRFinder¹⁰ pre-polish]
 │                                                                    │
 │           Short reads (if any) ─► FASTP² ─► [Polypolish] or [NextPolish] (opt.)
 │                                                                    │
@@ -83,9 +83,9 @@ Does the sample have long_reads?
 └── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
             (short-read-only, no Racon/Medaka/extra polish,                                   │
              no real "pre-polish" state — single call, as always)                             ▼
-                                                                            [Bakta⁷ / GTDB-Tk⁸]
-                                                                            (per sample, final
-                                                                             assembly)
+                                                                  [Bakta⁷ / GTDB-Tk⁸ / AMRFinder¹⁰]
+                                                                          (per sample, final
+                                                                           assembly)
                                                                                               │
                                                                                               ▼
                                                                           [MultiQC⁶ / Dashboard⁹]
@@ -112,18 +112,26 @@ Does the sample have long_reads?
 ⁷ Bakta annotates the final assembly (post-polish on the Flye path, the single
   assembly on the Unicycler path) — runs once per sample, like QUAST/BUSCO/
   CheckM2 above it, not run-scope like MultiQC/Dashboard below it. Its
-  protein/GFF output is meant to feed AMRFinderPlus's most accurate mode
-  (planned, not wired in yet)
+  protein/GFF output feeds AMRFinderPlus's most accurate mode (see footnote 10)
 ⁸ GTDB-Tk classifies the same final assembly — taxonomy (species, ANI,
   closest reference genome). Runs independently of Bakta, same scope. Its
-  classification is meant to pick the right AMRFinderPlus organism-specific
-  database (planned, not wired in yet) — note GTDB's taxonomy can diverge
+  classification picks the right AMRFinderPlus organism-specific database
+  when there's a match (see footnote 10) — note GTDB's taxonomy can diverge
   from familiar names (e.g. *Mycoplasmoides genitalium* is GTDB's current
   name for what NCBI calls *Mycoplasma genitalium*)
 ⁹ Dashboard generates results/dashboard.html — one card per sample with real
   pre/post-polish comparisons (QUAST/BUSCO/CheckM2) and a per-metric verdict;
   runs at the same point as MultiQC (once per run, all samples together) —
   see Comparison dashboard section below
+¹⁰ AMRFinderPlus runs twice: a nucleotide-only baseline right after
+   Racon/Medaka (Flye path only, mirrors QUAST's pre/post split — Unicycler
+   has no equivalent "pre" state), letting a later dashboard show which AMR
+   genes polishing rescued from a frameshift/indel; and a full mode
+   (protein+GFF from Bakta, --organism from GTDB-Tk when matched) on the
+   final assembly, both paths merged like Bakta/GTDB-Tk above. GTDB-Tk's
+   classification often has no match in AMRFinderPlus's curated organism
+   list (~31 organisms) — that's expected and safe, it just falls back to
+   the generic database instead of failing
 ```
 
 See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is generated.
@@ -152,6 +160,9 @@ See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is gener
 | Evaluation (post-polish, always) | CheckM2 | Final completeness + contamination — post-polish on the Flye path (`qc/checkm2_postpolish/`), single call on the Unicycler path (`qc/checkm2/`) |
 | Annotation (final assembly) | Bakta | Genome annotation (CDSs, tRNAs, rRNAs, ncRNAs, etc.) — runs once per sample, both paths (`annotation/bakta/`) |
 | Taxonomy (final assembly) | GTDB-Tk | Taxonomic classification (species, ANI, closest reference genome) — runs once per sample, both paths (`taxonomy/gtdbtk/`) |
+| AMR (pre-polish) | AMRFinderPlus | Nucleotide-only baseline — Flye path only (`amr/amrfinder_prepolish/`) |
+| Organism match | `gtdb_to_amrfinder_organism.py` | Matches the GTDB-Tk classification to an AMRFinderPlus `--organism` value, or falls back to none (`taxonomy/amrfinder_organism/`) |
+| AMR (post-polish, always) | AMRFinderPlus | Full mode — nucleotide+protein+GFF from Bakta, organism-aware — final assembly, both paths (`amr/amrfinder_postpolish/`) |
 | Aggregation (end of run) | MultiQC | Single report combining FastQC, NanoStat, QUAST and CheckM2 from all samples (`multiqc/`) |
 
 ---
@@ -687,6 +698,7 @@ bacflow/
     ├── checkm2.nf          # CHECKM2 + CHECKM2_PREPOLISH + CHECKM2_POSTPOLISH
     ├── bakta.nf            # BAKTA
     ├── gtdbtk.nf           # GTDBTK
+    ├── amrfinder.nf        # MATCH_ORGANISM + AMRFINDER_PREPOLISH + AMRFINDER_POSTPOLISH
     ├── multiqc.nf          # MULTIQC
     └── dashboard.nf        # SAMPLE_SUMMARY + DASHBOARD
 ```
@@ -726,9 +738,13 @@ results/
     │   ├── polypolish/          {sample}.polypolish.fasta (default)
     │   └── nextpolish/          {sample}.nextpolish.fasta (alternative, --polisher nextpolish)
     ├── annotation/
-    │   └── bakta/bakta_output/  {sample}.gff3, .faa, .ffn, .gbff, .embl, .json, .tsv, ... (both paths, final assembly)
-    └── taxonomy/
-        └── gtdbtk/gtdbtk_output/  {sample}.bac120.summary.tsv (classification, ANI, closest reference), gtdbtk.log (both paths, final assembly)
+    │   └── bakta/bakta_output/         {sample}.gff3, .faa, .ffn, .gbff, .embl, .json, .tsv, ... (both paths, final assembly)
+    ├── taxonomy/
+    │   ├── gtdbtk/gtdbtk_output/       {sample}.bac120.summary.tsv (classification, ANI, closest reference), gtdbtk.log (both paths, final assembly)
+    │   └── amrfinder_organism/         organism.txt (matched AMRFinderPlus --organism value, empty if no match — both paths, final assembly)
+    └── amr/
+        ├── amrfinder_prepolish/        {sample}.amrfinder_prepolish.tsv (Flye path only, nucleotide-only baseline)
+        └── amrfinder_postpolish/       {sample}.amrfinder_postpolish.tsv (full mode, organism-aware — both paths, final assembly)
 ```
 
 A given sample only produces **one** of each evaluation pair: `_prepolish/`+`_postpolish/` if it went through the Flye path (denovo or reference), or the single call if it went through the Unicycler path. `busco*/` directories only exist when `--reference` was not provided; `checkm2*/` always exist.
