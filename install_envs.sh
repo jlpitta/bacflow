@@ -19,7 +19,7 @@ BANNER
 echo "Instalador de ambientes"
 echo ""
 
-TOTAL_STEPS=5
+TOTAL_STEPS=6
 CURRENT_STEP=0
 CURRENT_STEP_NAME=""
 STEP_START_TS=0
@@ -80,7 +80,12 @@ ${PKG} env create -f "${SCRIPT_DIR}/envs/bakta.yaml" --yes || \
     ${PKG} env update -f "${SCRIPT_DIR}/envs/bakta.yaml" --prune
 step_end
 
-# Bancos de dados (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~98GB) são grandes
+step_start "Instalando bacflow-gtdbtk"
+${PKG} env create -f "${SCRIPT_DIR}/envs/gtdbtk.yaml" --yes || \
+    ${PKG} env update -f "${SCRIPT_DIR}/envs/gtdbtk.yaml" --prune
+step_end
+
+# Bancos de dados (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB) são grandes
 # demais pra bloquear a instalação aqui — download_databases.sh roda em
 # background (nohup + disown, sobrevive à sessão SSH terminar) e marca cada
 # base concluída em db_status/<nome>.done, que o bacflow.nf confere antes de

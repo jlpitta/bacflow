@@ -1,0 +1,7 @@
+name: bacflow-gtdbtk
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - gtdbtk

@@ -24,6 +24,7 @@ include { CHECKM2; CHECKM2_PREPOLISH; CHECKM2_POSTPOLISH } from './modules/local
 include { MULTIQC } from './modules/local/multiqc'
 include { SAMPLE_SUMMARY; DASHBOARD } from './modules/local/dashboard'
 include { BAKTA } from './modules/local/bakta'
+include { GTDBTK } from './modules/local/gtdbtk'
 
 // ─── banner ──────────────────────────────────────────────────────────────────
 // Plain text, no ANSI colors — this also gets written to .nextflow.log and any
@@ -94,6 +95,8 @@ def help_message() {
                                CheckM2 (completeness + contamination) always runs, regardless of --reference
       --bakta_db PATH         Path to the Bakta annotation database [default: ~/bakta_db/db]
                                Bakta (genome annotation) always runs on the final assembly, regardless of --reference
+      --gtdbtk_db PATH        Path to the GTDB-Tk reference data [default: ~/gtdbtk_db/release232]
+                               GTDB-Tk (taxonomic classification) always runs on the final assembly, regardless of --reference
 
     Assembler (automatic, no flag):
       Samples with --long_reads are assembled with Flye.
@@ -173,7 +176,7 @@ workflow {
     // started before a download finishes would otherwise fail deep inside
     // CHECKM2/BAKTA with a confusing error, so check up front instead.
     def db_status_dir = "${projectDir}/db_status"
-    ['checkm2', 'bakta'].each { db ->
+    ['checkm2', 'bakta', 'gtdbtk'].each { db ->
         if (!file("${db_status_dir}/${db}.done").exists()) {
             error "${db} database not ready yet (${db_status_dir}/${db}.done missing). " +
                   "It may still be downloading in the background — check logs/db_downloads.log, " +
@@ -272,6 +275,10 @@ workflow {
     // not consumed by anything yet (SAMPLE_SUMMARY/dashboard integration is a
     // separate follow-up item), just made available run-wide for that later.
     def ch_bakta_out = Channel.empty()
+
+    // GTDB-Tk taxonomy output — same pattern as ch_bakta_out, not consumed
+    // yet (feeds the AMRFinderPlus organism match and the dashboard later).
+    def ch_gtdbtk_out = Channel.empty()
 
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
@@ -391,6 +398,9 @@ workflow {
         BAKTA(ch_draft_flye_final.mix(ch_draft_uni))
         ch_bakta_out = ch_bakta_out.mix(BAKTA.out.report)
 
+        GTDBTK(ch_draft_flye_final.mix(ch_draft_uni))
+        ch_gtdbtk_out = ch_gtdbtk_out.mix(GTDBTK.out.report)
+
         // ── dashboard summary (per sample) ───────────────────────────────────
         // flye_path and unicycler_path are not mutually exclusive within denovo
         // mode (a samplesheet can mix both), so — same reasoning as the QUAST/
@@ -509,6 +519,9 @@ workflow {
         // ── annotation (final assembly) ───────────────────────────────────────
         BAKTA(ch_draft)
         ch_bakta_out = ch_bakta_out.mix(BAKTA.out.report)
+
+        GTDBTK(ch_draft)
+        ch_gtdbtk_out = ch_gtdbtk_out.mix(GTDBTK.out.report)
 
         // ── dashboard summary (per sample) ───────────────────────────────────
         // reference mode requires long_reads for every sample (validated in
