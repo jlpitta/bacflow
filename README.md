@@ -57,11 +57,12 @@ Does the sample have long_reads?
 └── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
             (short-read-only, no Racon/Medaka/extra polish,                                   │
              no real "pre-polish" state — single call, as always)                             ▼
-                                                                                     [Bakta⁷] (per sample,
-                                                                                      final assembly)
+                                                                            [Bakta⁷ / GTDB-Tk⁸]
+                                                                            (per sample, final
+                                                                             assembly)
                                                                                               │
                                                                                               ▼
-                                                                          [MultiQC⁶ / Dashboard⁸]
+                                                                          [MultiQC⁶ / Dashboard⁹]
                                                                           (end of run, all samples
                                                                            together)
 
@@ -84,11 +85,16 @@ Does the sample have long_reads?
   and NanoComp are left out (see Aggregation section below)
 ⁷ Bakta annotates the final assembly (post-polish on the Flye path, the single
   assembly on the Unicycler path) — runs once per sample, like QUAST/BUSCO/
-  CheckM2 above it, not run-scope like MultiQC/Dashboard below it. Not yet
-  wired into the dashboard/summary — planned as part of the AMRFinderPlus +
-  GTDB-Tk genomic-surveillance modules (Bakta's protein/GFF output feeds
-  AMRFinderPlus's most accurate mode)
-⁸ Dashboard generates results/dashboard.html — one card per sample with real
+  CheckM2 above it, not run-scope like MultiQC/Dashboard below it. Its
+  protein/GFF output is meant to feed AMRFinderPlus's most accurate mode
+  (planned, not wired in yet)
+⁸ GTDB-Tk classifies the same final assembly — taxonomy (species, ANI,
+  closest reference genome). Runs independently of Bakta, same scope. Its
+  classification is meant to pick the right AMRFinderPlus organism-specific
+  database (planned, not wired in yet) — note GTDB's taxonomy can diverge
+  from familiar names (e.g. *Mycoplasmoides genitalium* is GTDB's current
+  name for what NCBI calls *Mycoplasma genitalium*)
+⁹ Dashboard generates results/dashboard.html — one card per sample with real
   pre/post-polish comparisons (QUAST/BUSCO/CheckM2) and a per-metric verdict;
   runs at the same point as MultiQC (once per run, all samples together) —
   see Comparison dashboard section below
@@ -119,6 +125,7 @@ See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is gener
 | Evaluation (post-polish, no reference) | BUSCO | Final gene completeness — post-polish on the Flye path (`qc/busco_postpolish/`), single call on the Unicycler path (`qc/busco/`) — only without `--reference` |
 | Evaluation (post-polish, always) | CheckM2 | Final completeness + contamination — post-polish on the Flye path (`qc/checkm2_postpolish/`), single call on the Unicycler path (`qc/checkm2/`) |
 | Annotation (final assembly) | Bakta | Genome annotation (CDSs, tRNAs, rRNAs, ncRNAs, etc.) — runs once per sample, both paths (`annotation/bakta/`) |
+| Taxonomy (final assembly) | GTDB-Tk | Taxonomic classification (species, ANI, closest reference genome) — runs once per sample, both paths (`taxonomy/gtdbtk/`) |
 | Aggregation (end of run) | MultiQC | Single report combining FastQC, NanoStat, QUAST and CheckM2 from all samples (`multiqc/`) |
 
 ---
@@ -141,9 +148,9 @@ cd bacflow
 bash install_envs.sh
 ```
 
-The script automatically detects `mamba`, `micromamba` or `conda` (in that order of preference), installs the four environments (`bacflow-tools`, `bacflow-medaka`, `bacflow-checkm2`, `bacflow-bakta`) and prints instructions for setting up `nextflow` in your terminal.
+The script automatically detects `mamba`, `micromamba` or `conda` (in that order of preference), installs the five environments (`bacflow-tools`, `bacflow-medaka`, `bacflow-checkm2`, `bacflow-bakta`, `bacflow-gtdbtk`) and prints instructions for setting up `nextflow` in your terminal.
 
-**Databases (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~57GB compressed) download in the background**, not blocking the rest of the install — `install_envs.sh` launches `download_databases.sh` via `nohup`/`disown` (survives the terminal/SSH session closing) and returns immediately. Each database marks `db_status/<name>.done` on completion; skipped automatically on a re-run if already present. Check progress with:
+**Databases (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB) download in the background**, not blocking the rest of the install — `install_envs.sh` launches `download_databases.sh` via `nohup`/`disown` (survives the terminal/SSH session closing) and returns immediately. Each database marks `db_status/<name>.done` on completion; skipped automatically on a re-run if already present. Check progress with:
 ```bash
 tail -f logs/db_downloads.log      # live progress
 ls db_status/                      # what's already done
@@ -173,9 +180,10 @@ mamba env list | grep bacflow
 # bacflow-medaka   ~/miniforge3/envs/bacflow-medaka
 # bacflow-checkm2  ~/miniforge3/envs/bacflow-checkm2
 # bacflow-bakta    ~/miniforge3/envs/bacflow-bakta
+# bacflow-gtdbtk   ~/miniforge3/envs/bacflow-gtdbtk
 ```
 
-> **Important:** modules reference the environments by their **absolute path** (`$HOME/miniforge3/envs/bacflow-tools` / `bacflow-medaka` / `bacflow-checkm2`), assuming a standard Miniforge/Mambaforge installation under the user's `$HOME` — not by name or by the YAML path (referencing by name alone makes Nextflow try to *install a package* with that name from bioconda, instead of reusing the environment you already created). If your Conda/Mamba is installed somewhere else, adjust the `conda` directive in each `modules/local/*.nf`. Pre-installation is mandatory before the first run.
+> **Important:** modules reference the environments by their **absolute path** (`$HOME/miniforge3/envs/bacflow-tools` / `bacflow-medaka` / `bacflow-checkm2` / `bacflow-bakta` / `bacflow-gtdbtk`), assuming a standard Miniforge/Mambaforge installation under the user's `$HOME` — not by name or by the YAML path (referencing by name alone makes Nextflow try to *install a package* with that name from bioconda, instead of reusing the environment you already created). If your Conda/Mamba is installed somewhere else, adjust the `conda` directive in each `modules/local/*.nf`. Pre-installation is mandatory before the first run.
 
 ---
 
@@ -187,12 +195,15 @@ mamba env list | grep bacflow
 | `bacflow-medaka` | `envs/medaka.yaml` | medaka=1.11.3, setuptools=69.5.1 (**isolated** — TensorFlow/ONNX conflict with bioconda) |
 | `bacflow-checkm2` | `envs/checkm2.yaml` | checkm2=1.1.0 (**isolated** — real dependency conflict with `bacflow-tools`, discovered in practice) |
 | `bacflow-bakta` | `envs/bakta.yaml` | bakta=1.12.0 (installed cleanly on first try — no dependency conflict found) |
+| `bacflow-gtdbtk` | `envs/gtdbtk.yaml` | gtdbtk=2.7.2 (installed cleanly on first try — no dependency conflict found) |
 
 Medaka is kept in an isolated environment out of necessity, since its dependencies (TensorFlow, ONNX) conflict with bioconda-channel packages. The `setuptools=69.5.1` pin is required because newer versions removed the `pkg_resources` module, which `medaka=1.11.3` depends on.
 
 CheckM2 also needs an isolated environment: trying to install it inside `bacflow-tools` produces an unresolvable dependency conflict (`abseil-cpp`/`libboost`, pulled in by CheckM2's ML dependencies — scikit-learn, lightgbm). Besides the environment, CheckM2 requires a DIAMOND database (~1.7 GB) downloaded separately.
 
 Bakta requires its own database too (~84 GB uncompressed, `--type full`) — like CheckM2's, `install_envs.sh` downloads it automatically, in the background (see [Installation](#installation)). Bakta's database happens to bundle its own AMRFinderPlus database internally (`amrfinderplus-db/`, used for the AMR annotations Bakta reports as part of its own output) — worth knowing if you're also looking at AMRFinderPlus standalone.
+
+GTDB-Tk requires the largest of the three databases (~94 GB uncompressed) — also downloaded automatically in the background. The GTDB-Tk software version is tied to a specific compatible data release (this repo currently uses gtdbtk=2.7.2 with release232); if the pinned software version is ever bumped, the database release needs to be checked for compatibility and `--gtdbtk_db` (and possibly `download_databases.sh`'s download URL) updated to match.
 
 > `NanoComp` comes from the bioconda package **`nanocomp`**, not `nanoplot` (which provides `NanoPlot`, a different tool — a detailed single-dataset report, without comparison).
 
@@ -619,7 +630,8 @@ bacflow/
 │   ├── tools.yaml            # → bacflow-tools
 │   ├── medaka.yaml           # → bacflow-medaka (isolated)
 │   ├── checkm2.yaml          # → bacflow-checkm2 (isolated)
-│   └── bakta.yaml            # → bacflow-bakta
+│   ├── bakta.yaml             # → bacflow-bakta
+│   └── gtdbtk.yaml            # → bacflow-gtdbtk
 ├── genome_test/               # ready-to-use test data (see Testing the pipeline)
 │   ├── mycoplasma_genitalium_synthetic/
 │   └── staphylococcus_aureus_real/
@@ -639,7 +651,8 @@ bacflow/
     ├── quast.nf           # QUAST + QUAST_PREPOLISH + QUAST_POSTPOLISH
     ├── busco.nf           # BUSCO + BUSCO_PREPOLISH + BUSCO_POSTPOLISH
     ├── checkm2.nf          # CHECKM2 + CHECKM2_PREPOLISH + CHECKM2_POSTPOLISH
-    └── bakta.nf            # BAKTA
+    ├── bakta.nf            # BAKTA
+    └── gtdbtk.nf           # GTDBTK
 ```
 
 ---
@@ -676,8 +689,10 @@ results/
     │   ├── medaka/              {sample}.medaka.fasta
     │   ├── polypolish/          {sample}.polypolish.fasta (default)
     │   └── nextpolish/          {sample}.nextpolish.fasta (alternative, --polisher nextpolish)
-    └── annotation/
-        └── bakta/bakta_output/  {sample}.gff3, .faa, .ffn, .gbff, .embl, .json, .tsv, ... (both paths, final assembly)
+    ├── annotation/
+    │   └── bakta/bakta_output/  {sample}.gff3, .faa, .ffn, .gbff, .embl, .json, .tsv, ... (both paths, final assembly)
+    └── taxonomy/
+        └── gtdbtk/gtdbtk_output/  {sample}.bac120.summary.tsv (classification, ANI, closest reference), gtdbtk.log (both paths, final assembly)
 ```
 
 A given sample only produces **one** of each evaluation pair: `_prepolish/`+`_postpolish/` if it went through the Flye path (denovo or reference), or the single call if it went through the Unicycler path. `busco*/` directories only exist when `--reference` was not provided; `checkm2*/` always exist.
