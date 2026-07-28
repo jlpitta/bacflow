@@ -25,6 +25,7 @@ include { MULTIQC } from './modules/local/multiqc'
 include { SAMPLE_SUMMARY; DASHBOARD } from './modules/local/dashboard'
 include { BAKTA } from './modules/local/bakta'
 include { GTDBTK } from './modules/local/gtdbtk'
+include { MATCH_ORGANISM; AMRFINDER_PREPOLISH; AMRFINDER_POSTPOLISH } from './modules/local/amrfinder'
 
 // ─── banner ──────────────────────────────────────────────────────────────────
 // Plain text, no ANSI colors — this also gets written to .nextflow.log and any
@@ -123,6 +124,8 @@ def help_message() {
                                Bakta (genome annotation) always runs on the final assembly, regardless of --reference
       --gtdbtk_db PATH        Path to the GTDB-Tk reference data [default: ~/gtdbtk_db/release232]
                                GTDB-Tk (taxonomic classification) always runs on the final assembly, regardless of --reference
+      --amrfinder_db PATH     Path to the AMRFinderPlus database [default: ~/amrfinder_db/latest]
+                               AMRFinderPlus always runs on the final assembly, regardless of --reference
 
     Assembler (automatic, no flag):
       Samples with --long_reads are assembled with Flye.
@@ -202,7 +205,7 @@ workflow {
     // started before a download finishes would otherwise fail deep inside
     // CHECKM2/BAKTA with a confusing error, so check up front instead.
     def db_status_dir = "${projectDir}/db_status"
-    ['checkm2', 'bakta', 'gtdbtk'].each { db ->
+    ['checkm2', 'bakta', 'gtdbtk', 'amrfinder'].each { db ->
         if (!file("${db_status_dir}/${db}.done").exists()) {
             error "${db} database not ready yet (${db_status_dir}/${db}.done missing). " +
                   "It may still be downloading in the background — check logs/db_downloads.log, " +
@@ -305,6 +308,13 @@ workflow {
     // GTDB-Tk taxonomy output — same pattern as ch_bakta_out, not consumed
     // yet (feeds the AMRFinderPlus organism match and the dashboard later).
     def ch_gtdbtk_out = Channel.empty()
+
+    // AMRFinderPlus reports — pre-polish (nucleotide-only baseline) and
+    // post-polish (full mode, organism-aware). Not consumed by anything yet
+    // (SAMPLE_SUMMARY/dashboard integration is item 7) — made available
+    // run-wide for that, same pattern as ch_bakta_out/ch_gtdbtk_out.
+    def ch_amrfinder_pre_out = Channel.empty()
+    def ch_amrfinder_post_out = Channel.empty()
 
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
@@ -427,6 +437,20 @@ workflow {
         GTDBTK(ch_draft_flye_final.mix(ch_draft_uni))
         ch_gtdbtk_out = ch_gtdbtk_out.mix(GTDBTK.out.report)
 
+        // ── AMR (final assembly) ──────────────────────────────────────────────
+        // Pre-polish nucleotide-only baseline — Flye path only, mirrors
+        // QUAST_PREPOLISH (Unicycler has no equivalent "pre" state).
+        AMRFINDER_PREPOLISH(ch_draft_flye)
+        ch_amrfinder_pre_out = ch_amrfinder_pre_out.mix(AMRFINDER_PREPOLISH.out.report)
+
+        // Full mode (protein+GFF from Bakta, organism from GTDB-Tk) — both
+        // paths merged, same scope as BAKTA/GTDBTK above (no pre/post split
+        // needed here, only the nucleotide-only baseline above needs one).
+        MATCH_ORGANISM(ch_gtdbtk_out)
+        def ch_organism = MATCH_ORGANISM.out.organism.map { s, f -> tuple(s, f.text.trim()) }
+        AMRFINDER_POSTPOLISH(ch_bakta_out.join(ch_organism))
+        ch_amrfinder_post_out = ch_amrfinder_post_out.mix(AMRFINDER_POSTPOLISH.out.report)
+
         // ── dashboard summary (per sample) ───────────────────────────────────
         // flye_path and unicycler_path are not mutually exclusive within denovo
         // mode (a samplesheet can mix both), so — same reasoning as the QUAST/
@@ -492,6 +516,9 @@ workflow {
 
         MEDAKA(ch_medaka_input, medaka_model)
         def ch_draft = MEDAKA.out.assembly
+        // captured before ch_draft gets reassigned by the polish step below —
+        // AMRFINDER_PREPOLISH needs this exact pre-polish state later.
+        def ch_draft_prepolish = ch_draft
 
         // QC de montagem pré-polish — logo após o Medaka, antes do polimento
         // com short reads (compara com QUAST_POSTPOLISH mais abaixo)
@@ -548,6 +575,15 @@ workflow {
 
         GTDBTK(ch_draft)
         ch_gtdbtk_out = ch_gtdbtk_out.mix(GTDBTK.out.report)
+
+        // ── AMR (final assembly) ──────────────────────────────────────────────
+        AMRFINDER_PREPOLISH(ch_draft_prepolish)
+        ch_amrfinder_pre_out = ch_amrfinder_pre_out.mix(AMRFINDER_PREPOLISH.out.report)
+
+        MATCH_ORGANISM(ch_gtdbtk_out)
+        def ch_organism_ref = MATCH_ORGANISM.out.organism.map { s, f -> tuple(s, f.text.trim()) }
+        AMRFINDER_POSTPOLISH(ch_bakta_out.join(ch_organism_ref))
+        ch_amrfinder_post_out = ch_amrfinder_post_out.mix(AMRFINDER_POSTPOLISH.out.report)
 
         // ── dashboard summary (per sample) ───────────────────────────────────
         // reference mode requires long_reads for every sample (validated in
