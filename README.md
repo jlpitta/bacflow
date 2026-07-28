@@ -150,7 +150,7 @@ bash install_envs.sh
 
 The script automatically detects `mamba`, `micromamba` or `conda` (in that order of preference), installs the five environments (`bacflow-tools`, `bacflow-medaka`, `bacflow-checkm2`, `bacflow-bakta`, `bacflow-gtdbtk`) and prints instructions for setting up `nextflow` in your terminal.
 
-**Databases (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB) download in the background**, not blocking the rest of the install — `install_envs.sh` launches `download_databases.sh` via `nohup`/`disown` (survives the terminal/SSH session closing) and returns immediately. Each database marks `db_status/<name>.done` on completion; skipped automatically on a re-run if already present. Check progress with:
+**Databases (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB, AMRFinderPlus ~240MB) download in the background**, not blocking the rest of the install — `install_envs.sh` launches `download_databases.sh` via `nohup`/`disown` (survives the terminal/SSH session closing) and returns immediately. Each database marks `db_status/<name>.done` on completion; skipped automatically on a re-run if already present. Check progress with:
 ```bash
 tail -f logs/db_downloads.log      # live progress
 ls db_status/                      # what's already done
@@ -203,7 +203,9 @@ CheckM2 also needs an isolated environment: trying to install it inside `bacflow
 
 Bakta requires its own database too (~84 GB uncompressed, `--type full`) — like CheckM2's, `install_envs.sh` downloads it automatically, in the background (see [Installation](#installation)). Bakta's database happens to bundle its own AMRFinderPlus database internally (`amrfinderplus-db/`, used for the AMR annotations Bakta reports as part of its own output) — worth knowing if you're also looking at AMRFinderPlus standalone.
 
-GTDB-Tk requires the largest of the three databases (~94 GB uncompressed) — also downloaded automatically in the background. The GTDB-Tk software version is tied to a specific compatible data release (this repo currently uses gtdbtk=2.7.2 with release232); if the pinned software version is ever bumped, the database release needs to be checked for compatibility and `--gtdbtk_db` (and possibly `download_databases.sh`'s download URL) updated to match.
+GTDB-Tk requires the largest of the four databases (~94 GB uncompressed) — also downloaded automatically in the background. The GTDB-Tk software version is tied to a specific compatible data release (this repo currently uses gtdbtk=2.7.2 with release232); if the pinned software version is ever bumped, the database release needs to be checked for compatibility and `--gtdbtk_db` (and possibly `download_databases.sh`'s download URL) updated to match.
+
+AMRFinderPlus (used to pick the right organism-specific database for genomic-surveillance reporting — see `bin/gtdb_to_amrfinder_organism.py`) doesn't get its own conda environment: `bacflow-bakta` already provides an `amrfinder`/`amrfinder_update` binary as a Bakta dependency, so it's reused directly instead of adding a fifth environment. Its own database (~240 MB, independently versioned from the copy bundled inside Bakta's database, so an update to one doesn't silently change the other) is downloaded the same way as the rest, in the background.
 
 > `NanoComp` comes from the bioconda package **`nanocomp`**, not `nanoplot` (which provides `NanoPlot`, a different tool — a detailed single-dataset report, without comparison).
 
@@ -625,13 +627,19 @@ bacflow/
 ├── bacflow.nf                 # main DSL2 script
 ├── nextflow.config           # global config, parameters, profiles, CPUs
 ├── install_envs.sh           # pre-installs the conda environments
-├── download_databases.sh     # background DB downloads (CheckM2/Bakta/GTDB-Tk), launched by install_envs.sh
+├── download_databases.sh     # background DB downloads (CheckM2/Bakta/GTDB-Tk/AMRFinderPlus), launched by install_envs.sh
 ├── envs/
 │   ├── tools.yaml            # → bacflow-tools
 │   ├── medaka.yaml           # → bacflow-medaka (isolated)
 │   ├── checkm2.yaml          # → bacflow-checkm2 (isolated)
-│   ├── bakta.yaml             # → bacflow-bakta
+│   ├── bakta.yaml             # → bacflow-bakta (also provides amrfinder/amrfinder_update)
 │   └── gtdbtk.yaml            # → bacflow-gtdbtk
+├── bin/
+│   ├── summarize_sample.py           # per-sample dashboard JSON parser
+│   ├── generate_dashboard.py         # aggregates the JSONs, builds dashboard.html
+│   └── gtdb_to_amrfinder_organism.py # matches a GTDB-Tk classification to an AMRFinderPlus --organism value
+├── assets/
+│   └── dashboard_template.html       # dashboard HTML template (no mock data)
 ├── genome_test/               # ready-to-use test data (see Testing the pipeline)
 │   ├── mycoplasma_genitalium_synthetic/
 │   └── staphylococcus_aureus_real/
@@ -652,7 +660,9 @@ bacflow/
     ├── busco.nf           # BUSCO + BUSCO_PREPOLISH + BUSCO_POSTPOLISH
     ├── checkm2.nf          # CHECKM2 + CHECKM2_PREPOLISH + CHECKM2_POSTPOLISH
     ├── bakta.nf            # BAKTA
-    └── gtdbtk.nf           # GTDBTK
+    ├── gtdbtk.nf           # GTDBTK
+    ├── multiqc.nf          # MULTIQC
+    └── dashboard.nf        # SAMPLE_SUMMARY + DASHBOARD
 ```
 
 ---
