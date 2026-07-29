@@ -482,6 +482,10 @@ workflow {
             ch_busco_post_denovo = BUSCO_POSTPOLISH.out.report.mix(BUSCO.out.report)
         }
 
+        // AMRFINDER_PREPOLISH only exists for Flye-path samples (see the "AMR"
+        // section above) — same remainder:true + ?: [] degradation as BUSCO,
+        // so summarize_sample.py omits --amrfinder-pre for Unicycler samples
+        // instead of failing on a missing file.
         def ch_summary_input_denovo = ch_summary_meta
             .join(ch_quast_pre_denovo)
             .join(ch_quast_post_denovo)
@@ -489,8 +493,14 @@ workflow {
             .join(ch_checkm2_post_denovo)
             .join(ch_busco_pre_denovo,  remainder: true)
             .join(ch_busco_post_denovo, remainder: true)
-            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, bpre, bpost ->
-                tuple(s, input_type, assembler, qpre, qpost, bpre ?: [], bpost ?: [], cpre, cpost)
+            .join(ch_gtdbtk_out)
+            .join(ch_bakta_out)
+            .join(ch_organism)
+            .join(ch_amrfinder_pre_out, remainder: true)
+            .join(ch_amrfinder_post_out)
+            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, bpre, bpost, gtdbtk, bakta, organism, amrpre, amrpost ->
+                tuple(s, input_type, assembler, qpre, qpost, bpre ?: [], bpost ?: [], cpre, cpost,
+                      gtdbtk, bakta, organism, amrpre ?: [], amrpost)
             }
 
         SAMPLE_SUMMARY(ch_summary_input_denovo)
@@ -597,8 +607,14 @@ workflow {
             .join(QUAST_POSTPOLISH.out.report)
             .join(CHECKM2_PREPOLISH.out.report)
             .join(CHECKM2_POSTPOLISH.out.report)
-            .map { s, input_type, assembler, qpre, qpost, cpre, cpost ->
-                tuple(s, input_type, assembler, qpre, qpost, [], [], cpre, cpost)
+            .join(ch_gtdbtk_out)
+            .join(ch_bakta_out)
+            .join(ch_organism_ref)
+            .join(ch_amrfinder_pre_out)
+            .join(ch_amrfinder_post_out)
+            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, gtdbtk, bakta, organism, amrpre, amrpost ->
+                tuple(s, input_type, assembler, qpre, qpost, [], [], cpre, cpost,
+                      gtdbtk, bakta, organism, amrpre, amrpost)
             }
 
         SAMPLE_SUMMARY(ch_summary_input_ref)

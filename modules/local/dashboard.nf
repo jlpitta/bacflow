@@ -13,13 +13,19 @@ process SAMPLE_SUMMARY {
           path(busco_pre, stageAs: 'busco_pre'),
           path(busco_post, stageAs: 'busco_post'),
           path(checkm2_pre, stageAs: 'checkm2_pre'),
-          path(checkm2_post, stageAs: 'checkm2_post')
+          path(checkm2_post, stageAs: 'checkm2_post'),
+          path(gtdbtk, stageAs: 'gtdbtk'),
+          path(bakta, stageAs: 'bakta'),
+          val(organism),
+          path(amrfinder_pre, stageAs: 'amrfinder_pre.tsv'),
+          path(amrfinder_post, stageAs: 'amrfinder_post.tsv')
 
     output:
     path "${sample}.summary.json", emit: json
 
     script:
     def busco_args = busco_pre ? "--busco-pre ${busco_pre} --busco-post ${busco_post}" : ""
+    def amrfinder_pre_args = amrfinder_pre ? "--amrfinder-pre ${amrfinder_pre}" : ""
     """
     summarize_sample.py \
         --sample ${sample} \
@@ -29,7 +35,12 @@ process SAMPLE_SUMMARY {
         --quast-post ${quast_post} \
         --checkm2-pre ${checkm2_pre} \
         --checkm2-post ${checkm2_post} \
+        --gtdbtk ${gtdbtk} \
+        --bakta ${bakta} \
+        --organism "${organism}" \
+        --amrfinder-post ${amrfinder_post} \
         ${busco_args} \
+        ${amrfinder_pre_args} \
         --out ${sample}.summary.json
     """
 }

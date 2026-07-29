@@ -280,6 +280,86 @@ def info_metric_row_html(label, value, hint=""):
         <div class="metric-row-info"><span>{html.escape(label)}</span><span><b>{value}</b>{(" · " + hint) if hint else ""}</span></div>'''
 
 
+# ─── surveillance section (taxonomy → annotation → AMR) ─────────────────────
+# Sits at the top of the card, above the polish-comparison metrics: species
+# identification contextualizes everything below it (the clinical/epi
+# relevance of an AMR gene depends on the organism), and the annotation
+# summary contextualizes the AMR list itself.
+
+def taxonomy_html(tax):
+    if not tax or not tax.get("species"):
+        return ('<div class="surveil-row"><span class="surveil-label">Taxonomia</span>'
+                '<span class="surveil-value">Não classificado</span></div>')
+    species_esc = html.escape(tax["species"])
+    ani = tax.get("closest_reference_ani")
+    ani_txt = f' · {ani:.1f}% ANI' if ani is not None else ""
+    ref = tax.get("closest_reference")
+    ref_txt = f' · ref. mais próxima: {html.escape(ref)}' if ref else ""
+    return (f'<div class="surveil-row"><span class="surveil-label">Taxonomia</span>'
+            f'<span class="surveil-value"><i>{species_esc}</i>{ani_txt}{ref_txt}</span></div>')
+
+
+def annotation_html(ann):
+    if not ann:
+        return ""
+    parts = []
+    for key, label in (("n_cds", "CDS"), ("n_trna", "tRNA"), ("n_rrna", "rRNA")):
+        value = ann.get(key)
+        if value is not None:
+            parts.append(f'{int(value)} {label}')
+    if not parts:
+        return ""
+    return (f'<div class="surveil-row"><span class="surveil-label">Anotação</span>'
+            f'<span class="surveil-value">{" · ".join(parts)} <span class="surveil-hint">(Bakta)</span></span></div>')
+
+
+def amr_html(amr):
+    if not amr:
+        return ""
+    genes = amr.get("genes") or []
+    fixed = set(amr.get("genes_fixed_by_polish") or [])
+    organism = amr.get("organism_used")
+
+    counts = []
+    if amr.get("n_amr"):
+        counts.append(f'{amr["n_amr"]} AMR')
+    if amr.get("n_stress"):
+        counts.append(f'{amr["n_stress"]} estresse')
+    if amr.get("n_virulence"):
+        counts.append(f'{amr["n_virulence"]} virulência')
+    summary = " · ".join(counts) if counts else "nenhum gene encontrado"
+    org_note = (f' · organismo: <i>{html.escape(organism)}</i>' if organism
+                else ' · banco genérico (sem organismo específico casado)')
+
+    row = (f'<div class="surveil-row"><span class="surveil-label">AMR / virulência / estresse</span>'
+           f'<span class="surveil-value">{summary}{org_note}</span></div>')
+
+    if not genes:
+        return row
+
+    chips = []
+    for g in genes:
+        symbol = g.get("symbol") or "?"
+        cls = g.get("class") or g.get("type") or ""
+        rescued = symbol in fixed
+        chip_class = "amr-chip rescued" if rescued else "amr-chip"
+        title_bits = [html.escape(cls)] if cls else []
+        if rescued:
+            title_bits.append("resgatado pelo polimento")
+        title = " · ".join(title_bits)
+        chips.append(f'<span class="{chip_class}" title="{title}">{html.escape(symbol)}</span>')
+    chips_html = f'<div class="amr-chips">{"".join(chips)}</div>'
+
+    return row + chips_html
+
+
+def surveillance_html(s):
+    rows = taxonomy_html(s.get("taxonomy")) + annotation_html(s.get("annotation")) + amr_html(s.get("amr"))
+    if not rows:
+        return ""
+    return f'<div class="surveillance">{rows}</div>'
+
+
 def sample_card_body(s):
     """Returns (metrics_html, note_html) — the two variable blocks inside a card."""
     if not s["has_polish_comparison"]:
@@ -325,6 +405,7 @@ def sample_card_html(s):
     input_text = INPUT_TYPE_LABEL[s["input_type"]]
     sample_esc = html.escape(s["sample"])
     metrics_html, note_html = sample_card_body(s)
+    surveil_html = surveillance_html(s)
 
     return f'''
     <article class="card">
@@ -339,6 +420,7 @@ def sample_card_html(s):
           <span class="input-badge">{html.escape(input_text)}</span>
         </div>
       </div>
+      {surveil_html}
       {metrics_html}
       {note_html}
     </article>'''
