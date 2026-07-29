@@ -408,11 +408,12 @@ Combines into a single HTML report: **FastQC** (raw/trimmed), **NanoStat** (raw/
 Runs **once at the end of the run** (same scope as `MULTIQC`), generating `results/dashboard.html` — one card per sample comparing real pre/post-polish metrics (QUAST, BUSCO, CheckM2), with a per-metric verdict and a badge for the input type used.
 
 - **Input badge**: each card shows whether the sample ran as `Long + Short` (hybrid, Flye path), `Long only` (long-read-only, Flye path with no short reads) or `Short only` (Unicycler path).
+- **Surveillance section** (top of each card, above the polish-comparison metrics): taxonomy (GTDB-Tk species + ANI + closest reference) → annotation (Bakta CDS/tRNA/rRNA counts) → AMR/virulence/stress (AMRFinderPlus genes as chips, which `--organism` database was used or "generic" if GTDB-Tk had no match, and which genes were rescued by polishing — present post-polish but not in the pre-polish nucleotide-only baseline).
 - **Per-metric verdict**: each row/chart carries its own improvement verdict (not the sample's overall verdict) — with a "noise floor" so irrelevant oscillations aren't flagged as improvement or regression.
 - **SVG slope charts**: 4 dynamically generated charts — QUAST (mismatches), BUSCO (%Complete), CheckM2 (Completeness), CheckM2 (Contamination).
 - Implemented in `bin/summarize_sample.py` (per-sample parser, generates `{sample}.summary.json`), `bin/generate_dashboard.py` (aggregates the JSONs and builds the HTML) and `assets/dashboard_template.html` (the real template, no mock data).
 - Samples are processed by `SAMPLE_SUMMARY` (per sample, `modules/local/dashboard.nf`) and aggregated by `DASHBOARD` (once per run, same pattern as `MULTIQC`).
-- Validated on 3 real scenarios (2026-07-22): `--reference`/Flye, no `--reference`/BUSCO, and multi-sample via `--samplesheet` mixing Flye+Unicycler in the same run (validates channel `.mix()` under DSL2's single-invocation-per-process constraint).
+- Validated on 3 real scenarios (2026-07-22): `--reference`/Flye, no `--reference`/BUSCO, and multi-sample via `--samplesheet` mixing Flye+Unicycler in the same run (validates channel `.mix()` under DSL2's single-invocation-per-process constraint). Surveillance section validated 2026-07-28 with real taxonomy/annotation/AMR data end-to-end.
 
 ---
 
