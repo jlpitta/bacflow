@@ -148,17 +148,17 @@ def slope_chart(title, unit_note, series, domain, higher_is_better, extra_note="
         y_post = scale_y(s["post"], lo, hi)
         sample_esc = html.escape(s["sample"])
         body.append(f'<line class="trend-line {v}" x1="{X_PRE}" y1="{y_pre:.1f}" x2="{X_POST}" y2="{y_post:.1f}" />')
-        body.append(f'<circle class="trend-dot {v}" cx="{X_PRE}" cy="{y_pre:.1f}" r="4"><title>{sample_esc} pré-polish: {s["pre"]:.1f}</title></circle>')
-        body.append(f'<circle class="trend-dot {v}" cx="{X_POST}" cy="{y_post:.1f}" r="4"><title>{sample_esc} pós-polish: {s["post"]:.1f}</title></circle>')
+        body.append(f'<circle class="trend-dot {v}" cx="{X_PRE}" cy="{y_pre:.1f}" r="4"><title>{sample_esc} pre-polish: {s["pre"]:.1f}</title></circle>')
+        body.append(f'<circle class="trend-dot {v}" cx="{X_POST}" cy="{y_post:.1f}" r="4"><title>{sample_esc} post-polish: {s["post"]:.1f}</title></circle>')
         label_esc = html.escape(truncate_label(s["sample"]))
         body.append(f'<text class="trend-label {v}" x="{X_PRE-10}" y="{pre_label_y[s["sample"]]:.1f}" text-anchor="end">{label_esc} · {s["pre"]:.1f}</text>')
         body.append(f'<text class="trend-label {v}" x="{X_POST+10}" y="{post_label_y[s["sample"]]:.1f}" text-anchor="start">{s["post"]:.1f}</text>')
 
-    body.append(f'<text class="trend-axis-caption" x="{X_PRE}" y="205" text-anchor="middle">Pré-polish</text>')
-    body.append(f'<text class="trend-axis-caption" x="{X_POST}" y="205" text-anchor="middle">Pós-polish</text>')
+    body.append(f'<text class="trend-axis-caption" x="{X_PRE}" y="205" text-anchor="middle">Pre-polish</text>')
+    body.append(f'<text class="trend-axis-caption" x="{X_POST}" y="205" text-anchor="middle">Post-polish</text>')
 
-    arrow = "subir é melhora" if higher_is_better else "descer é melhora"
-    note = f'<p class="trend-note">{html.escape(unit_note)} · eixo {lo:.0f}–{hi:.0f} · {arrow}{(" · " + extra_note) if extra_note else ""}</p>'
+    arrow = "higher is better" if higher_is_better else "lower is better"
+    note = f'<p class="trend-note">{html.escape(unit_note)} · axis {lo:.0f}–{hi:.0f} · {arrow}{(" · " + extra_note) if extra_note else ""}</p>'
     svg = (f'<svg viewBox="0 0 {CHART_W} {CHART_H}" role="img" aria-label="{html.escape(title)}">'
            + "".join(body) + "</svg>")
     return f'<div class="trend-card"><h3>{html.escape(title)}</h3>{note}{svg}</div>'
@@ -193,23 +193,23 @@ def build_trend_section(samples):
     if ref_series:
         vals = [v for s in ref_series for v in (s["pre"], s["post"])]
         domain = (0, max(vals) * 1.15 if max(vals) > 0 else 1)
-        charts.append(slope_chart("Erros de montagem", "QUAST · mismatches /100kbp", ref_series, domain,
-                                   higher_is_better=False, extra_note="amostras com --reference"))
+        charts.append(slope_chart("Assembly errors", "QUAST · mismatches /100kbp", ref_series, domain,
+                                   higher_is_better=False, extra_note="samples with --reference"))
     if noref_series:
         vals = [v for s in noref_series for v in (s["pre"], s["post"])]
         lo = min(90, min(vals) - 2)
-        charts.append(slope_chart("Completude gênica", "BUSCO · % completos", noref_series, (max(0, lo), 100),
-                                   higher_is_better=True, extra_note="amostras sem --reference"))
+        charts.append(slope_chart("Gene completeness", "BUSCO · % complete", noref_series, (max(0, lo), 100),
+                                   higher_is_better=True, extra_note="samples without --reference"))
     if completeness_series:
         vals = [v for s in completeness_series for v in (s["pre"], s["post"])]
         lo = min(90, min(vals) - 2)
-        charts.append(slope_chart("Completude (CheckM2)", "% Completeness", completeness_series, (max(0, lo), 100),
-                                   higher_is_better=True, extra_note="todas as amostras, sempre roda"))
+        charts.append(slope_chart("Completeness (CheckM2)", "% Completeness", completeness_series, (max(0, lo), 100),
+                                   higher_is_better=True, extra_note="all samples, always runs"))
     if contamination_series:
         vals = [v for s in contamination_series for v in (s["pre"], s["post"])]
         hi = max(vals) * 1.15 if max(vals) > 0 else 5
-        charts.append(slope_chart("Contaminação (CheckM2)", "% Contamination", contamination_series, (0, hi),
-                                   higher_is_better=False, extra_note="todas as amostras, sempre roda"))
+        charts.append(slope_chart("Contamination (CheckM2)", "% Contamination", contamination_series, (0, hi),
+                                   higher_is_better=False, extra_note="all samples, always runs"))
 
     if not charts:
         return ""
@@ -217,13 +217,13 @@ def build_trend_section(samples):
     return f'''
   <section class="trend-section">
     <div class="trend-head">
-      <h2>Tendência do polimento</h2>
-      <p>Cada linha liga o valor pré-polish ao pós-polish de uma amostra.</p>
+      <h2>Polishing trend</h2>
+      <p>Each line connects a sample's pre-polish value to its post-polish value.</p>
     </div>
     <div class="trend-legend">
-      <span class="legend-item"><i class="dot good"></i>Melhorou</span>
-      <span class="legend-item"><i class="dot neutral"></i>Inconclusivo</span>
-      <span class="legend-item"><i class="dot critical"></i>Sem melhora</span>
+      <span class="legend-item"><i class="dot good"></i>Improved</span>
+      <span class="legend-item"><i class="dot neutral"></i>Inconclusive</span>
+      <span class="legend-item"><i class="dot critical"></i>No improvement</span>
     </div>
     <div class="trend-grid">
       {"".join(charts)}
@@ -235,18 +235,18 @@ def build_trend_section(samples):
 # ─── cards + table ──────────────────────────────────────────────────────────
 
 VERDICT_CHIP = {
-    "good": ('good', '✓ Melhorou'),
-    "neutral": ('neutral', '– Inconclusivo'),
-    "critical": ('critical', '✕ Sem melhora'),
-    "na": ('neutral', '○ Sem comparação'),
+    "good": ('good', '✓ Improved'),
+    "neutral": ('neutral', '– Inconclusive'),
+    "critical": ('critical', '✕ No improvement'),
+    "na": ('neutral', '○ No comparison'),
 }
 
 METRIC_META = {
-    "mismatches_per_100kbp": ("Mismatches /100kbp", "menor é melhor", False),
-    "indels_per_100kbp": ("Indels /100kbp", "menor é melhor", False),
-    "busco_complete_pct": ("Completos (BUSCO, %)", "maior é melhor", True),
-    "checkm2_completeness": ("Completeness (CheckM2, %)", "maior é melhor", True),
-    "checkm2_contamination": ("Contamination (CheckM2, %)", "menor é melhor", False),
+    "mismatches_per_100kbp": ("Mismatches /100kbp", "lower is better", False),
+    "indels_per_100kbp": ("Indels /100kbp", "lower is better", False),
+    "busco_complete_pct": ("Complete (BUSCO, %)", "higher is better", True),
+    "checkm2_completeness": ("Completeness (CheckM2, %)", "higher is better", True),
+    "checkm2_contamination": ("Contamination (CheckM2, %)", "lower is better", False),
 }
 
 
@@ -263,7 +263,7 @@ def metric_row_html(key, sig):
     # color, not the arrow, carries the good/bad signal)
     raw_diff = post_v - pre_v
     arrow = "↑" if raw_diff > 0 else ("↓" if raw_diff < 0 else "—")
-    pct_change = f"{'+' if delta >= 0 else ''}{(delta / pre_v * 100):.0f}%" if pre_v else "n/d"
+    pct_change = f"{'+' if delta >= 0 else ''}{(delta / pre_v * 100):.0f}%" if pre_v else "n/a"
     return f'''
         <div class="metric-row">
           <div class="metric-label">{html.escape(label)}<span class="metric-hint">{hint}</span></div>
@@ -271,7 +271,7 @@ def metric_row_html(key, sig):
             <div class="bar-track"><div class="bar-rail"><div class="bar-fill pre" style="width:{pre_pct:.1f}%"></div></div><span class="bar-value">{pre_v:.1f}</span></div>
             <div class="bar-track"><div class="bar-rail"><div class="bar-fill post-{v}" style="width:{post_pct:.1f}%"></div></div><span class="bar-value">{post_v:.1f}</span></div>
           </div>
-          <div class="metric-delta {v}" data-tooltip="{pct_change} vs. pré-polish">{arrow} {abs(delta):.1f}</div>
+          <div class="metric-delta {v}" data-tooltip="{pct_change} vs. pre-polish">{arrow} {abs(delta):.1f}</div>
         </div>'''
 
 
@@ -288,14 +288,14 @@ def info_metric_row_html(label, value, hint=""):
 
 def taxonomy_html(tax):
     if not tax or not tax.get("species"):
-        return ('<div class="surveil-row"><span class="surveil-label">Taxonomia</span>'
-                '<span class="surveil-value">Não classificado</span></div>')
+        return ('<div class="surveil-row"><span class="surveil-label">Taxonomy</span>'
+                '<span class="surveil-value">Not classified</span></div>')
     species_esc = html.escape(tax["species"])
     ani = tax.get("closest_reference_ani")
     ani_txt = f' · {ani:.1f}% ANI' if ani is not None else ""
     ref = tax.get("closest_reference")
-    ref_txt = f' · ref. mais próxima: {html.escape(ref)}' if ref else ""
-    return (f'<div class="surveil-row"><span class="surveil-label">Taxonomia</span>'
+    ref_txt = f' · closest reference: {html.escape(ref)}' if ref else ""
+    return (f'<div class="surveil-row"><span class="surveil-label">Taxonomy</span>'
             f'<span class="surveil-value"><i>{species_esc}</i>{ani_txt}{ref_txt}</span></div>')
 
 
@@ -309,7 +309,7 @@ def annotation_html(ann):
             parts.append(f'{int(value)} {label}')
     if not parts:
         return ""
-    return (f'<div class="surveil-row"><span class="surveil-label">Anotação</span>'
+    return (f'<div class="surveil-row"><span class="surveil-label">Annotation</span>'
             f'<span class="surveil-value">{" · ".join(parts)} <span class="surveil-hint">(Bakta)</span></span></div>')
 
 
@@ -324,14 +324,14 @@ def amr_html(amr):
     if amr.get("n_amr"):
         counts.append(f'{amr["n_amr"]} AMR')
     if amr.get("n_stress"):
-        counts.append(f'{amr["n_stress"]} estresse')
+        counts.append(f'{amr["n_stress"]} stress')
     if amr.get("n_virulence"):
-        counts.append(f'{amr["n_virulence"]} virulência')
-    summary = " · ".join(counts) if counts else "nenhum gene encontrado"
-    org_note = (f' · organismo: <i>{html.escape(organism)}</i>' if organism
-                else ' · banco genérico (sem organismo específico casado)')
+        counts.append(f'{amr["n_virulence"]} virulence')
+    summary = " · ".join(counts) if counts else "no genes found"
+    org_note = (f' · organism: <i>{html.escape(organism)}</i>' if organism
+                else ' · generic database (no organism match)')
 
-    row = (f'<div class="surveil-row"><span class="surveil-label">AMR / virulência / estresse</span>'
+    row = (f'<div class="surveil-row"><span class="surveil-label">AMR / virulence / stress</span>'
            f'<span class="surveil-value">{summary}{org_note}</span></div>')
 
     if not genes:
@@ -345,7 +345,7 @@ def amr_html(amr):
         chip_class = "amr-chip rescued" if rescued else "amr-chip"
         title_bits = [html.escape(cls)] if cls else []
         if rescued:
-            title_bits.append("resgatado pelo polimento")
+            title_bits.append("rescued by polishing")
         title = " · ".join(title_bits)
         chips.append(f'<span class="{chip_class}" title="{title}">{html.escape(symbol)}</span>')
     chips_html = f'<div class="amr-chips">{"".join(chips)}</div>'
@@ -364,8 +364,8 @@ def sample_card_body(s):
     """Returns (metrics_html, note_html) — the two variable blocks inside a card."""
     if not s["has_polish_comparison"]:
         rows = [info_metric_row_html(
-            "Montagem", s["assembler"].capitalize(),
-            "Unicycler já incorpora os short reads — sem estado pré-polish pra comparar",
+            "Assembly", s["assembler"].capitalize(),
+            "Unicycler already incorporates the short reads — no pre-polish state to compare against",
         )]
         c = s["checkm2"]["post"]
         if c.get("completeness") is not None:
@@ -385,15 +385,15 @@ def sample_card_body(s):
     qpre, qpost = s["quast"]["pre"].get("n50"), s["quast"]["post"].get("n50")
     n50_html = ""
     if qpre is not None and qpost is not None:
-        n50_html = (f'<div class="info-row"><span>N50 (contiguidade, informativo)</span>'
-                    f'<span><b>{qpre:,.0f} bp → {qpost:,.0f} bp</b> · sem alteração esperada</span></div>')
+        n50_html = (f'<div class="info-row"><span>N50 (contiguity, informational)</span>'
+                    f'<span><b>{qpre:,.0f} bp → {qpost:,.0f} bp</b> · no change expected</span></div>')
     metrics_html = f'<div class="metrics">{"".join(rows)}</div>{n50_html}'
 
     note_html = ""
     if s.get("contamination_alert"):
         post_contam = s["checkm2"]["post"]["contamination"]
-        note_html = (f'<div class="card-note">⚠ Contaminação alta pós-polish ({post_contam:.1f}%) '
-                      f'— considerar investigar a amostra (cultura mista, cross-contamination) antes de aceitar a montagem.</div>')
+        note_html = (f'<div class="card-note">⚠ High contamination post-polish ({post_contam:.1f}%) '
+                      f'— consider investigating the sample (mixed culture, cross-contamination) before accepting the assembly.</div>')
 
     return metrics_html, note_html
 
@@ -401,7 +401,7 @@ def sample_card_body(s):
 def sample_card_html(s):
     v = s["verdict"]
     stripe_class, chip_text = VERDICT_CHIP[v]
-    mode_text = "QUAST · referência" if s["has_reference"] else "BUSCO · sem referência"
+    mode_text = "QUAST · reference" if s["has_reference"] else "BUSCO · no reference"
     input_text = INPUT_TYPE_LABEL[s["input_type"]]
     sample_esc = html.escape(s["sample"])
     metrics_html, note_html = sample_card_body(s)
@@ -432,8 +432,8 @@ def table_rows_html(samples):
         mode = "QUAST" if s["has_reference"] else "BUSCO"
         if not s["has_polish_comparison"]:
             rows.append(f'<tr><td>{html.escape(s["sample"])}</td><td>{mode}</td>'
-                        f'<td class="label-cell">(Unicycler, sem comparação)</td><td>—</td><td>—</td>'
-                        f'<td>—</td><td><span class="verdict-td neutral">○ Sem comparação</span></td></tr>')
+                        f'<td class="label-cell">(Unicycler, no comparison)</td><td>—</td><td>—</td>'
+                        f'<td>—</td><td><span class="verdict-td neutral">○ No comparison</span></td></tr>')
             continue
         for key, sig in s["signals"].items():
             label = METRIC_META[key][0]
@@ -470,13 +470,13 @@ def main():
     n_na = sum(1 for s in samples if s["verdict"] == "na")
 
     tiles = [
-        ('<div class="stat"><div class="n">{}</div><div class="label">Amostras analisadas</div></div>'.format(n_total)),
-        ('<div class="stat is-good"><div class="n">{}</div><div class="label">Melhoraram</div></div>'.format(n_good)),
-        ('<div class="stat is-neutral"><div class="n">{}</div><div class="label">Inconclusivas</div></div>'.format(n_neutral)),
-        ('<div class="stat is-critical"><div class="n">{}</div><div class="label">Sem melhora</div></div>'.format(n_critical)),
+        ('<div class="stat"><div class="n">{}</div><div class="label">Samples analyzed</div></div>'.format(n_total)),
+        ('<div class="stat is-good"><div class="n">{}</div><div class="label">Improved</div></div>'.format(n_good)),
+        ('<div class="stat is-neutral"><div class="n">{}</div><div class="label">Inconclusive</div></div>'.format(n_neutral)),
+        ('<div class="stat is-critical"><div class="n">{}</div><div class="label">No improvement</div></div>'.format(n_critical)),
     ]
     if n_na:
-        tiles.append('<div class="stat is-neutral"><div class="n">{}</div><div class="label">Sem comparação (Unicycler)</div></div>'.format(n_na))
+        tiles.append('<div class="stat is-neutral"><div class="n">{}</div><div class="label">No comparison (Unicycler)</div></div>'.format(n_na))
 
     trend_html = build_trend_section(samples)
     cards_html = "".join(sample_card_html(s) for s in samples)
@@ -489,8 +489,8 @@ def main():
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     out_html = (template
                 .replace("{{RUN_DATE}}", now)
-                .replace("{{RUN_COMMIT}}", args.run_commit or "n/d")
-                .replace("{{NEXTFLOW_VERSION}}", args.nextflow_version or "n/d")
+                .replace("{{RUN_COMMIT}}", args.run_commit or "n/a")
+                .replace("{{NEXTFLOW_VERSION}}", args.nextflow_version or "n/a")
                 .replace("{{N_SAMPLES}}", str(n_total))
                 .replace("{{OVERVIEW_TILES}}", "".join(tiles))
                 .replace("{{TREND_SECTION}}", trend_html)

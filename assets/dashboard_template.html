@@ -1,5 +1,5 @@
 <meta charset="utf-8" />
-<title>bacflow — Comparação de Polimento</title>
+<title>bacflow — Polishing Comparison</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   @font-face {
@@ -610,12 +610,12 @@
 
   <header class="top">
     <div>
-      <p class="brand-eyebrow">bacflow · controle de qualidade</p>
-      <h1>Comparação de polimento — long-read vs. long-read + short-read</h1>
+      <p class="brand-eyebrow">bacflow · quality control</p>
+      <h1>Polishing comparison — long-read vs. long-read + short-read</h1>
     </div>
     <div class="run-meta">
       Run: <b>{{RUN_DATE}}</b> · commit <b>{{RUN_COMMIT}}</b><br>
-      Nextflow <b>{{NEXTFLOW_VERSION}}</b> · <b>{{N_SAMPLES}}</b> amostras
+      Nextflow <b>{{NEXTFLOW_VERSION}}</b> · <b>{{N_SAMPLES}}</b> samples
     </div>
   </header>
 
@@ -627,7 +627,7 @@
 
   <div class="view-toolbar">
     <button class="toggle-btn" id="viewToggle" type="button" aria-pressed="false">
-      <span class="ic">▤</span><span id="viewToggleLabel">Ver como tabela</span>
+      <span class="ic">▤</span><span id="viewToggleLabel">View as table</span>
     </button>
   </div>
 
@@ -642,7 +642,7 @@
       <table>
         <thead>
           <tr>
-            <th>Amostra</th><th>Modo</th><th class="label-cell">Métrica</th><th>Pré-polish</th><th>Pós-polish</th><th>Delta</th><th>Veredito</th>
+            <th>Sample</th><th>Mode</th><th class="label-cell">Metric</th><th>Pre-polish</th><th>Post-polish</th><th>Delta</th><th>Verdict</th>
           </tr>
         </thead>
         <tbody>
@@ -653,7 +653,7 @@
   </section>
 
   <footer class="method">
-    <strong>Metodologia:</strong> pré-polish = montagem Flye + Medaka (consenso de long reads, antes de qualquer short read). Pós-polish = após Polypolish/NextPolish. Com <code>--reference</code>, o QUAST compara mismatches/indels por 100kbp diretamente. Sem referência, o BUSCO mede completude gênica — indels de long-read causam frameshift, que fragmenta genes; um polimento eficaz reduz genes fragmentados/ausentes. O CheckM2 (completude + contaminação) roda sempre, com ou sem referência. N50 é mostrado como contexto de contiguidade, não entra no veredito. Amostras montadas com Unicycler (só short reads) não têm etapa de polish separada, então aparecem sem comparação pré/pós — só os valores finais, como contexto.
+    <strong>Methodology:</strong> pre-polish = Flye + Medaka assembly (long-read consensus, before any short read). Post-polish = after Polypolish/NextPolish. With <code>--reference</code>, QUAST compares mismatches/indels per 100kbp directly. Without a reference, BUSCO measures gene completeness — long-read indels cause frameshifts, which fragment genes; effective polishing reduces fragmented/missing genes. CheckM2 (completeness + contamination) always runs, with or without a reference. N50 is shown as contiguity context, it doesn't factor into the verdict. Samples assembled with Unicycler (short reads only) don't have a separate polish stage, so they appear without a pre/post comparison — just the final values, as context.
   </footer>
 
 </div>
@@ -668,7 +668,7 @@
       var showingTable = table.classList.toggle('is-active');
       cards.classList.toggle('is-hidden', showingTable);
       btn.setAttribute('aria-pressed', String(showingTable));
-      label.textContent = showingTable ? 'Ver como fichas' : 'Ver como tabela';
+      label.textContent = showingTable ? 'View as cards' : 'View as table';
     });
   })();
 </script>
