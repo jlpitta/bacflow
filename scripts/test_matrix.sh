@@ -33,10 +33,19 @@ GSIZE="2.8m"
 SS_DENOVO="scripts/test_matrix_samplesheets/denovo_mixed.csv"
 SS_REFERENCE="scripts/test_matrix_samplesheets/reference_mixed.csv"
 
+# M. genitalium isn't in AMRFinderPlus's curated --organism list (confirmed
+# manually while building MATCH_ORGANISM) -- used only by O1, to exercise the
+# no-match fallback path instead of the S. aureus dataset, which always matches.
+MYCO_LONG="genome_test/mycoplasma_genitalium_synthetic/long_reads.fastq.gz"
+MYCO_SR1="genome_test/mycoplasma_genitalium_synthetic/short_reads_1.fastq.gz"
+MYCO_SR2="genome_test/mycoplasma_genitalium_synthetic/short_reads_2.fastq.gz"
+MYCO_REF="genome_test/mycoplasma_genitalium_synthetic/reference.fasta"
+MYCO_GSIZE="580000"
+
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
 conda activate bacflow-tools
 
-declare -a TEST_IDS=(D1 D2 D3 D4 D5 D6 D7 D8 D9 D10 R1 R2 R3 R4 R5 R6 S1 S2 S3)
+declare -a TEST_IDS=(D1 D2 D3 D4 D5 D6 D7 D8 D9 D10 R1 R2 R3 R4 R5 R6 S1 S2 S3 O1)
 declare -A TEST_DESC=(
   [D1]="denovo hybrid +ref polypolish"
   [D2]="denovo hybrid +ref polypolish racon"
@@ -57,6 +66,7 @@ declare -A TEST_DESC=(
   [S1]="samplesheet denovo mixed(hybrid+longonly+shortonly) +ref"
   [S2]="samplesheet denovo mixed(hybrid+longonly+shortonly) -ref (BUSCO)"
   [S3]="samplesheet reference mixed(hybrid+longonly) (fixed in v0.9.2 -- Medaka wasn't running for any sample)"
+  [O1]="denovo hybrid +ref, M. genitalium dataset -- AMRFinder organism match expected to fail (safe fallback to generic db)"
 )
 
 # Fills the `args` nameref with the nextflow CLI flags for a given test id.
@@ -84,6 +94,7 @@ build_args() {
     S1)  out+=(--samplesheet "$SS_DENOVO" --reference "$REF") ;;
     S2)  out+=(--samplesheet "$SS_DENOVO") ;;
     S3)  out+=(--mode reference --samplesheet "$SS_REFERENCE" --reference "$REF") ;;
+    O1)  out+=(--long_reads "$MYCO_LONG" --short_reads_1 "$MYCO_SR1" --short_reads_2 "$MYCO_SR2" --genome_size "$MYCO_GSIZE" --sample_name sa_o1 --reference "$MYCO_REF") ;;
     *) echo "unknown test id: $id" >&2; return 1 ;;
   esac
 }
@@ -117,6 +128,20 @@ for id in "${TEST_IDS[@]}"; do
     [[ -z "$err_line" ]] && err_line="(exit $exit_code, ver $logfile)"
   else
     status="PASS"
+  fi
+
+  # O1 only proves the AMRFinder no-match fallback if organism.txt actually
+  # comes out empty -- otherwise the pipeline succeeded, but on the wrong
+  # code path (e.g. a future AMRFinder db update adds Mycoplasma/
+  # Mycoplasmoides to the curated list), silently defeating the scenario.
+  if [[ "$id" == "O1" && "$status" == "PASS" ]]; then
+    org_file="$outdir/sa_o1/taxonomy/amrfinder_organism/organism.txt"
+    if [[ -s "$org_file" ]]; then
+      status="FAIL"
+      err_line="fallback not exercised -- organism.txt matched '$(tr -d '\n' < "$org_file")' (AMRFinder db may have gained a Mycoplasma/Mycoplasmoides entry)"
+    else
+      err_line="fallback confirmed: organism.txt empty as expected"
+    fi
   fi
 
   printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
