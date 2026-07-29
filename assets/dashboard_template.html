@@ -236,6 +236,30 @@
     box-shadow: var(--shadow);
     padding: 1.1rem 1.25rem 0.6rem;
   }
+  .trend-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .trend-expand {
+    appearance: none;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--ink-muted);
+    font-size: 0.8125rem;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .trend-expand:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .trend-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .trend-card h3 {
     font-size: 0.875rem;
     font-weight: 700;
@@ -271,6 +295,76 @@
   .trend-label.good { fill: var(--good); }
   .trend-label.neutral { fill: var(--neutral-chip); }
   .trend-label.critical { fill: var(--critical); }
+
+  /* ---- chart modal ---- */
+  body.modal-open { overflow: hidden; }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 12, 11, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.25rem;
+    z-index: 100;
+  }
+  /* Higher specificity than the bare class rule above, so the [hidden]
+     attribute actually hides this fixed full-viewport layer -- without this,
+     an author-stylesheet display:flex on the same element beats the
+     user-agent's default [hidden]{display:none} (equal specificity, later
+     in cascade order), leaving an invisible layer that still intercepts
+     every click and scroll on the page. */
+  .modal-overlay[hidden] { display: none; }
+  .modal-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 760px;
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 1.5rem 1.75rem 1.75rem;
+  }
+  .modal-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .modal-panel-head h3 { margin: 0; font-size: 1.0625rem; }
+  .modal-actions { display: flex; align-items: center; gap: 0.5rem; }
+  .modal-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+  }
+  .modal-btn:hover { border-color: var(--ink-faint); }
+  .modal-btn:focus-visible, .modal-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .modal-close {
+    appearance: none;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: var(--ink); }
+  .modal-chart { max-width: 520px; margin: 0 auto 1.25rem; }
+  .modal-chart svg { width: 100%; height: auto; display: block; }
+  .modal-table-wrap table { min-width: auto; font-size: 0.8125rem; }
 
   /* ---- view toggle ---- */
   .view-toolbar {
@@ -642,7 +736,7 @@
       <table>
         <thead>
           <tr>
-            <th>Sample</th><th>Mode</th><th class="label-cell">Metric</th><th>Pre-polish</th><th>Post-polish</th><th>Delta</th><th>Verdict</th>
+            <th>Sample</th><th>Input</th><th>Mode</th><th class="label-cell">Metric</th><th>Pre-polish</th><th>Post-polish</th><th>Delta</th><th>Verdict</th>
           </tr>
         </thead>
         <tbody>
@@ -669,6 +763,126 @@
       cards.classList.toggle('is-hidden', showingTable);
       btn.setAttribute('aria-pressed', String(showingTable));
       label.textContent = showingTable ? 'View as cards' : 'View as table';
+    });
+  })();
+
+  // ---- chart modal: expand, view data table, download PNG/SVG ----
+  (function () {
+    var modal = document.getElementById('chartModal');
+    if (!modal) return; // no trend charts in this run
+
+    var lastFocused = null;
+
+    function openPanel(index, triggerEl) {
+      lastFocused = triggerEl;
+      var panels = modal.querySelectorAll('.modal-panel');
+      for (var i = 0; i < panels.length; i++) {
+        panels[i].hidden = panels[i].id !== 'chart-panel-' + index;
+      }
+      modal.hidden = false;
+      document.body.classList.add('modal-open');
+      var closeBtn = modal.querySelector('.modal-panel:not([hidden]) .modal-close');
+      if (closeBtn) closeBtn.focus();
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+      document.body.classList.remove('modal-open');
+      if (lastFocused) lastFocused.focus();
+    }
+
+    var expandButtons = document.querySelectorAll('.trend-expand');
+    for (var i = 0; i < expandButtons.length; i++) {
+      expandButtons[i].addEventListener('click', function (e) {
+        openPanel(e.currentTarget.getAttribute('data-chart-target'), e.currentTarget);
+      });
+    }
+
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal || e.target.closest('.modal-close')) closeModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+
+    // Standalone downloads carry their own CSS -- the page's <style> block
+    // doesn't travel with a downloaded file, so class-based chart colors
+    // (.trend-line.good etc.) would otherwise vanish. Fixed light-theme
+    // palette + generic font fallbacks, since exported files are meant for
+    // pasting into reports, not for matching the live page's theme.
+    var EXPORT_CSS = '.trend-grid-line{stroke:#DCE6E3;stroke-width:1}' +
+      '.trend-axis-caption{fill:#5B6B66;font-family:"Segoe UI",system-ui,sans-serif;font-size:11px}' +
+      '.trend-line{fill:none;stroke-width:2}' +
+      '.trend-line.good{stroke:#1C8F68}.trend-line.neutral{stroke:#5B6B72}.trend-line.critical{stroke:#C94A36}' +
+      '.trend-dot.good{fill:#1C8F68}.trend-dot.neutral{fill:#5B6B72}.trend-dot.critical{fill:#C94A36}' +
+      '.trend-label{font-family:ui-monospace,Consolas,monospace;font-size:10px}' +
+      '.trend-label.good{fill:#1C8F68}.trend-label.neutral{fill:#5B6B72}.trend-label.critical{fill:#C94A36}';
+
+    function standaloneSvgString(svgEl) {
+      var clone = svgEl.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      var vb = (clone.getAttribute('viewBox') || '').split(' ');
+      if (vb.length === 4) {
+        clone.setAttribute('width', vb[2]);
+        clone.setAttribute('height', vb[3]);
+      }
+      var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bg.setAttribute('x', '0'); bg.setAttribute('y', '0');
+      bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%');
+      bg.setAttribute('fill', '#FFFFFF');
+      clone.insertBefore(bg, clone.firstChild);
+      var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      style.textContent = EXPORT_CSS;
+      clone.insertBefore(style, clone.firstChild);
+      return new XMLSerializer().serializeToString(clone);
+    }
+
+    function slugify(s) {
+      return (s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '')) || 'chart';
+    }
+
+    function triggerDownload(blob, filename) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    modal.addEventListener('click', function (e) {
+      var panel = e.target.closest('.modal-panel');
+      if (!panel) return;
+      var svg = panel.querySelector('svg');
+      var title = panel.querySelector('h3').textContent;
+
+      if (e.target.closest('.dl-svg')) {
+        triggerDownload(new Blob([standaloneSvgString(svg)], { type: 'image/svg+xml' }), slugify(title) + '.svg');
+        return;
+      }
+      if (e.target.closest('.dl-png')) {
+        var svgStr = standaloneSvgString(svg);
+        var objUrl = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml' }));
+        var img = new Image();
+        img.onload = function () {
+          var scale = 2;
+          var vb = svg.getAttribute('viewBox').split(' ');
+          var w = parseFloat(vb[2]), h = parseFloat(vb[3]);
+          var canvas = document.createElement('canvas');
+          canvas.width = w * scale;
+          canvas.height = h * scale;
+          var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(scale, scale);
+          ctx.drawImage(img, 0, 0, w, h);
+          URL.revokeObjectURL(objUrl);
+          canvas.toBlob(function (blob) { triggerDownload(blob, slugify(title) + '.png'); }, 'image/png');
+        };
+        img.src = objUrl;
+      }
     });
   })();
 </script>

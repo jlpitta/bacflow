@@ -121,10 +121,47 @@ def place_labels(entries):
     return out
 
 
-def slope_chart(title, unit_note, series, domain, higher_is_better, extra_note=""):
-    """series: list of dicts {sample, pre, post, verdict}. Returns SVG HTML block or '' if empty."""
+def chart_data_table_html(series):
+    """The per-sample pre/post/delta/verdict values behind a trend chart, as a table."""
+    rows = []
+    for s in series:
+        v = s["verdict"] or "neutral"
+        chip_class, chip_text = VERDICT_CHIP[v]
+        rows.append(f'<tr><td>{html.escape(s["sample"])}</td>'
+                    f'<td>{s["pre"]:.1f}</td><td>{s["post"]:.1f}</td>'
+                    f'<td class="delta-{v}">{"+" if s["delta"]>=0 else ""}{s["delta"]:.1f}</td>'
+                    f'<td><span class="verdict-td {chip_class}">{chip_text}</span></td></tr>')
+    return (f'<div class="table-scroll modal-table-wrap"><table><thead><tr>'
+            f'<th>Sample</th><th>Pre-polish</th><th>Post-polish</th><th>Delta</th><th>Verdict</th>'
+            f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+
+
+def chart_modal_panel_html(chart_index, title, svg_html, series):
+    """Hidden-by-default modal content for one chart: the same SVG at a larger
+    display size (pure CSS scaling, same vector markup -- no re-render needed)
+    plus its underlying per-sample data table and download buttons."""
+    title_esc = html.escape(title)
+    table_html = chart_data_table_html(series)
+    return f'''
+    <div class="modal-panel" id="chart-panel-{chart_index}" hidden>
+      <div class="modal-panel-head">
+        <h3>{title_esc}</h3>
+        <div class="modal-actions">
+          <button class="modal-btn dl-png" type="button">Download PNG</button>
+          <button class="modal-btn dl-svg" type="button">Download SVG</button>
+          <button class="modal-close" type="button" aria-label="Close">✕</button>
+        </div>
+      </div>
+      <div class="modal-chart">{svg_html}</div>
+      {table_html}
+    </div>'''
+
+
+def slope_chart(chart_index, title, unit_note, series, domain, higher_is_better, extra_note=""):
+    """series: list of dicts {sample, pre, post, delta, verdict}.
+    Returns (card_html, modal_panel_html) — both '' if series is empty."""
     if not series:
-        return ""
+        return "", ""
     lo, hi = domain
     lines = []
     pre_positions = []
@@ -161,7 +198,14 @@ def slope_chart(title, unit_note, series, domain, higher_is_better, extra_note="
     note = f'<p class="trend-note">{html.escape(unit_note)} · axis {lo:.0f}–{hi:.0f} · {arrow}{(" · " + extra_note) if extra_note else ""}</p>'
     svg = (f'<svg viewBox="0 0 {CHART_W} {CHART_H}" role="img" aria-label="{html.escape(title)}">'
            + "".join(body) + "</svg>")
-    return f'<div class="trend-card"><h3>{html.escape(title)}</h3>{note}{svg}</div>'
+    title_esc = html.escape(title)
+    card = (f'<div class="trend-card" data-chart-index="{chart_index}">'
+            f'<div class="trend-card-head"><h3>{title_esc}</h3>'
+            f'<button class="trend-expand" type="button" data-chart-target="{chart_index}" '
+            f'aria-label="Expand {title_esc} chart and view data table">⤢</button></div>'
+            f'{note}{svg}</div>')
+    panel = chart_modal_panel_html(chart_index, title, svg, series)
+    return card, panel
 
 
 def build_trend_section(samples):
@@ -173,10 +217,12 @@ def build_trend_section(samples):
         sig = s["signals"]
         if s["has_reference"] and "mismatches_per_100kbp" in sig:
             m = sig["mismatches_per_100kbp"]
-            ref_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"], "verdict": m["verdict"]})
+            ref_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"],
+                                "delta": m["delta"], "verdict": m["verdict"]})
         if (not s["has_reference"]) and "busco_complete_pct" in sig:
             m = sig["busco_complete_pct"]
-            noref_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"], "verdict": m["verdict"]})
+            noref_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"],
+                                  "delta": m["delta"], "verdict": m["verdict"]})
 
     completeness_series = []
     contamination_series = []
@@ -184,32 +230,41 @@ def build_trend_section(samples):
         sig = s["signals"]
         if "checkm2_completeness" in sig:
             m = sig["checkm2_completeness"]
-            completeness_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"], "verdict": m["verdict"]})
+            completeness_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"],
+                                         "delta": m["delta"], "verdict": m["verdict"]})
         if "checkm2_contamination" in sig:
             m = sig["checkm2_contamination"]
-            contamination_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"], "verdict": m["verdict"]})
+            contamination_series.append({"sample": s["sample"], "pre": m["pre"], "post": m["post"],
+                                          "delta": m["delta"], "verdict": m["verdict"]})
 
     charts = []
+    panels = []
+
+    def add_chart(*args, **kwargs):
+        card, panel = slope_chart(len(charts), *args, **kwargs)
+        charts.append(card)
+        panels.append(panel)
+
     if ref_series:
         vals = [v for s in ref_series for v in (s["pre"], s["post"])]
         domain = (0, max(vals) * 1.15 if max(vals) > 0 else 1)
-        charts.append(slope_chart("Assembly errors", "QUAST · mismatches /100kbp", ref_series, domain,
-                                   higher_is_better=False, extra_note="samples with --reference"))
+        add_chart("Assembly errors", "QUAST · mismatches /100kbp", ref_series, domain,
+                  higher_is_better=False, extra_note="samples with --reference")
     if noref_series:
         vals = [v for s in noref_series for v in (s["pre"], s["post"])]
         lo = min(90, min(vals) - 2)
-        charts.append(slope_chart("Gene completeness", "BUSCO · % complete", noref_series, (max(0, lo), 100),
-                                   higher_is_better=True, extra_note="samples without --reference"))
+        add_chart("Gene completeness", "BUSCO · % complete", noref_series, (max(0, lo), 100),
+                  higher_is_better=True, extra_note="samples without --reference")
     if completeness_series:
         vals = [v for s in completeness_series for v in (s["pre"], s["post"])]
         lo = min(90, min(vals) - 2)
-        charts.append(slope_chart("Completeness (CheckM2)", "% Completeness", completeness_series, (max(0, lo), 100),
-                                   higher_is_better=True, extra_note="all samples, always runs"))
+        add_chart("Completeness (CheckM2)", "% Completeness", completeness_series, (max(0, lo), 100),
+                  higher_is_better=True, extra_note="all samples, always runs")
     if contamination_series:
         vals = [v for s in contamination_series for v in (s["pre"], s["post"])]
         hi = max(vals) * 1.15 if max(vals) > 0 else 5
-        charts.append(slope_chart("Contamination (CheckM2)", "% Contamination", contamination_series, (0, hi),
-                                   higher_is_better=False, extra_note="all samples, always runs"))
+        add_chart("Contamination (CheckM2)", "% Contamination", contamination_series, (0, hi),
+                  higher_is_better=False, extra_note="all samples, always runs")
 
     if not charts:
         return ""
@@ -218,7 +273,7 @@ def build_trend_section(samples):
   <section class="trend-section">
     <div class="trend-head">
       <h2>Polishing trend</h2>
-      <p>Each line connects a sample's pre-polish value to its post-polish value.</p>
+      <p>Each line connects a sample's pre-polish value to its post-polish value. Click ⤢ on a chart to enlarge it and see the data behind it.</p>
     </div>
     <div class="trend-legend">
       <span class="legend-item"><i class="dot good"></i>Improved</span>
@@ -229,6 +284,9 @@ def build_trend_section(samples):
       {"".join(charts)}
     </div>
   </section>
+  <div class="modal-overlay" id="chartModal" hidden>
+    {"".join(panels)}
+  </div>
 '''
 
 
@@ -430,8 +488,9 @@ def table_rows_html(samples):
     rows = []
     for s in samples:
         mode = "QUAST" if s["has_reference"] else "BUSCO"
+        input_text = html.escape(INPUT_TYPE_LABEL[s["input_type"]])
         if not s["has_polish_comparison"]:
-            rows.append(f'<tr><td>{html.escape(s["sample"])}</td><td>{mode}</td>'
+            rows.append(f'<tr><td>{html.escape(s["sample"])}</td><td>{input_text}</td><td>{mode}</td>'
                         f'<td class="label-cell">(Unicycler, no comparison)</td><td>—</td><td>—</td>'
                         f'<td>—</td><td><span class="verdict-td neutral">○ No comparison</span></td></tr>')
             continue
@@ -439,7 +498,7 @@ def table_rows_html(samples):
             label = METRIC_META[key][0]
             v = sig["verdict"] or "neutral"
             chip_class, chip_text = VERDICT_CHIP[v]
-            rows.append(f'<tr><td>{html.escape(s["sample"])}</td><td>{mode}</td>'
+            rows.append(f'<tr><td>{html.escape(s["sample"])}</td><td>{input_text}</td><td>{mode}</td>'
                         f'<td class="label-cell">{html.escape(label)}</td>'
                         f'<td>{sig["pre"]:.1f}</td><td>{sig["post"]:.1f}</td>'
                         f'<td class="delta-{v}">{"+" if sig["delta"]>=0 else ""}{sig["delta"]:.1f}</td>'
