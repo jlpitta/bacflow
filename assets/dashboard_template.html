@@ -643,6 +643,18 @@
     border-top: 1px solid var(--border);
   }
 
+  /* ---- detail sections (taxonomy / AMR, below the trend charts) ---- */
+  .detail-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .detail-block h3 {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
   /* ---- table view ---- */
   .table-view { display: none; }
   .table-view.is-active { display: block; }
@@ -718,6 +730,10 @@
   </section>
 
   {{TREND_SECTION}}
+
+  {{TAXONOMY_SECTION}}
+
+  {{AMR_SECTION}}
 
   <div class="view-toolbar">
     <button class="toggle-btn" id="viewToggle" type="button" aria-pressed="false">

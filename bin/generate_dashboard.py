@@ -290,6 +290,217 @@ def build_trend_section(samples):
 '''
 
 
+# ─── taxonomy section (GTDB-Tk, aggregated across all samples) ──────────────
+
+def stat_tile_html(value, label, cls=""):
+    cls_attr = f" {cls}" if cls else ""
+    return f'<div class="stat{cls_attr}"><div class="n">{value}</div><div class="label">{html.escape(label)}</div></div>'
+
+
+def dash_or(value, fmt=None):
+    if value is None or value == "N/A":
+        return "—"
+    return fmt(value) if fmt else html.escape(str(value))
+
+
+def build_taxonomy_section(samples):
+    tax_samples = [s for s in samples if s.get("taxonomy")]
+    if not tax_samples:
+        return ""
+
+    classified = [s for s in tax_samples if s["taxonomy"].get("species")]
+    unclassified = [s for s in tax_samples if not s["taxonomy"].get("species")]
+
+    species_counts = {}
+    for s in classified:
+        sp = s["taxonomy"]["species"]
+        entry = species_counts.setdefault(sp, {"count": 0, "anis": []})
+        entry["count"] += 1
+        ani = s["taxonomy"].get("closest_reference_ani")
+        if ani is not None:
+            entry["anis"].append(ani)
+
+    all_anis = [a for e in species_counts.values() for a in e["anis"]]
+    avg_ani = sum(all_anis) / len(all_anis) if all_anis else None
+
+    tiles = [
+        stat_tile_html(len(tax_samples), "Samples analyzed"),
+        stat_tile_html(len(classified), "Classified to species", cls="is-good" if classified and not unclassified else ""),
+        stat_tile_html(len(unclassified), "Not classified", cls="is-critical" if unclassified else ""),
+        stat_tile_html(len(species_counts), "Unique species found"),
+    ]
+    if avg_ani is not None:
+        tiles.append(stat_tile_html(f"{avg_ani:.1f}%", "Avg. ANI to closest reference"))
+
+    species_rows = []
+    for sp, e in sorted(species_counts.items(), key=lambda kv: (-kv[1]["count"], kv[0])):
+        avg = sum(e["anis"]) / len(e["anis"]) if e["anis"] else None
+        pct = 100.0 * e["count"] / len(tax_samples)
+        species_rows.append(
+            f'<tr><td class="label-cell"><i>{html.escape(sp)}</i></td>'
+            f'<td>{e["count"]} ({pct:.0f}%)</td>'
+            f'<td>{f"{avg:.1f}%" if avg is not None else "—"}</td></tr>')
+    if unclassified:
+        pct = 100.0 * len(unclassified) / len(tax_samples)
+        species_rows.append(
+            f'<tr><td class="label-cell">Not classified to species</td>'
+            f'<td>{len(unclassified)} ({pct:.0f}%)</td><td>—</td></tr>')
+
+    sample_rows = []
+    for s in tax_samples:
+        t = s["taxonomy"]
+        sample_esc = html.escape(s["sample"])
+        if t.get("species"):
+            species_cell = f'<i>{html.escape(t["species"])}</i>'
+        elif t.get("genus"):
+            species_cell = f'<span class="surveil-hint">genus only:</span> <i>{html.escape(t["genus"])}</i>'
+        else:
+            species_cell = '<span class="surveil-hint">Not classified</span>'
+        ani_cell = dash_or(t.get("closest_reference_ani"), lambda v: f"{v:.1f}%")
+        ref_cell = dash_or(t.get("closest_reference"))
+        method_cell = dash_or(t.get("classification_method"))
+        sample_rows.append(
+            f'<tr><td>{sample_esc}</td><td class="label-cell">{species_cell}</td>'
+            f'<td>{ani_cell}</td><td class="label-cell">{ref_cell}</td>'
+            f'<td class="label-cell">{method_cell}</td></tr>')
+
+    return f'''
+  <section class="trend-section">
+    <div class="trend-head">
+      <h2>Taxonomic classification (GTDB-Tk)</h2>
+      <p>Species-level classification against the GTDB reference database. The matched species is also what drives the organism-specific AMRFinderPlus database match in the section below.</p>
+    </div>
+    <div class="overview">
+      {"".join(tiles)}
+    </div>
+    <div class="detail-block">
+      <h3>Species found across samples</h3>
+      <div class="table-scroll"><table><thead><tr>
+        <th class="label-cell">Species</th><th>Samples</th><th>Avg. ANI</th>
+      </tr></thead><tbody>{"".join(species_rows)}</tbody></table></div>
+    </div>
+    <div class="detail-block">
+      <h3>Per-sample classification</h3>
+      <div class="table-scroll"><table><thead><tr>
+        <th>Sample</th><th class="label-cell">Species</th><th>ANI</th>
+        <th class="label-cell">Closest reference genome</th><th class="label-cell">Classification method</th>
+      </tr></thead><tbody>{"".join(sample_rows)}</tbody></table></div>
+    </div>
+  </section>
+'''
+
+
+# ─── AMR section (AMRFinderPlus, aggregated across all samples) ─────────────
+
+def build_amr_section(samples):
+    amr_samples = [s for s in samples if s.get("amr")]
+    if not amr_samples:
+        return ""
+
+    total_amr = sum(s["amr"].get("n_amr") or 0 for s in amr_samples)
+    total_stress = sum(s["amr"].get("n_stress") or 0 for s in amr_samples)
+    total_virulence = sum(s["amr"].get("n_virulence") or 0 for s in amr_samples)
+    n_matched_org = sum(1 for s in amr_samples if s["amr"].get("organism_used"))
+    n_rescued = sum(len(s["amr"].get("genes_fixed_by_polish") or []) for s in amr_samples)
+
+    tiles = [
+        stat_tile_html(len(amr_samples), "Samples analyzed"),
+        stat_tile_html(total_amr, "AMR genes found"),
+        stat_tile_html(total_stress, "Stress genes found"),
+        stat_tile_html(total_virulence, "Virulence genes found"),
+        stat_tile_html(f"{n_matched_org}/{len(amr_samples)}", "Organism-matched database"),
+    ]
+    if n_rescued:
+        tiles.append(stat_tile_html(n_rescued, "Gene instances rescued by polishing", cls="is-good"))
+
+    gene_stats = {}
+    for s in amr_samples:
+        for g in s["amr"].get("genes") or []:
+            symbol = g.get("symbol") or "?"
+            e = gene_stats.setdefault(symbol, {
+                "name": g.get("name"), "class": g.get("class"), "subclass": g.get("subclass"),
+                "type": g.get("type"), "count": 0, "identities": [], "coverages": [],
+            })
+            e["count"] += 1
+            if g.get("identity_pct") is not None:
+                e["identities"].append(g["identity_pct"])
+            if g.get("coverage_pct") is not None:
+                e["coverages"].append(g["coverage_pct"])
+
+    gene_rows = []
+    for symbol, e in sorted(gene_stats.items(), key=lambda kv: (-kv[1]["count"], kv[0])):
+        avg_id = sum(e["identities"]) / len(e["identities"]) if e["identities"] else None
+        avg_cov = sum(e["coverages"]) / len(e["coverages"]) if e["coverages"] else None
+        pct = 100.0 * e["count"] / len(amr_samples)
+        gene_rows.append(
+            f'<tr><td class="label-cell"><b>{html.escape(symbol)}</b></td>'
+            f'<td class="label-cell">{dash_or(e["name"])}</td>'
+            f'<td class="label-cell">{dash_or(e["class"])}</td>'
+            f'<td class="label-cell">{dash_or(e["subclass"])}</td>'
+            f'<td>{dash_or(e["type"])}</td>'
+            f'<td>{e["count"]} ({pct:.0f}%)</td>'
+            f'<td>{f"{avg_id:.1f}%" if avg_id is not None else "—"}</td>'
+            f'<td>{f"{avg_cov:.1f}%" if avg_cov is not None else "—"}</td></tr>')
+
+    sample_rows = []
+    for s in amr_samples:
+        amr = s["amr"]
+        sample_esc = html.escape(s["sample"])
+        organism = amr.get("organism_used")
+        org_cell = f'<i>{html.escape(organism)}</i>' if organism else '<span class="surveil-hint">generic database</span>'
+        genes = amr.get("genes") or []
+        if genes:
+            fixed = set(amr.get("genes_fixed_by_polish") or [])
+            chips = []
+            for g in genes:
+                symbol = g.get("symbol") or "?"
+                rescued = symbol in fixed
+                chip_class = "amr-chip rescued" if rescued else "amr-chip"
+                cls = g.get("class") or g.get("type") or ""
+                title_bits = [html.escape(cls)] if cls else []
+                if rescued:
+                    title_bits.append("rescued by polishing")
+                chips.append(f'<span class="{chip_class}" title="{" · ".join(title_bits)}">{html.escape(symbol)}</span>')
+            genes_cell = f'<div class="amr-chips">{"".join(chips)}</div>'
+        else:
+            genes_cell = '<span class="surveil-hint">no genes found</span>'
+        sample_rows.append(
+            f'<tr><td>{sample_esc}</td><td class="label-cell">{org_cell}</td>'
+            f'<td>{amr.get("n_amr") or 0}</td><td>{amr.get("n_stress") or 0}</td><td>{amr.get("n_virulence") or 0}</td>'
+            f'<td class="label-cell">{genes_cell}</td></tr>')
+
+    gene_table_block = ""
+    if gene_rows:
+        gene_table_block = f'''
+    <div class="detail-block">
+      <h3>Genes found across samples</h3>
+      <div class="table-scroll"><table><thead><tr>
+        <th class="label-cell">Symbol</th><th class="label-cell">Name</th><th class="label-cell">Class</th>
+        <th class="label-cell">Subclass</th><th>Type</th><th>Samples</th><th>Avg. identity</th><th>Avg. coverage</th>
+      </tr></thead><tbody>{"".join(gene_rows)}</tbody></table></div>
+    </div>'''
+
+    return f'''
+  <section class="trend-section">
+    <div class="trend-head">
+      <h2>Resistance, virulence &amp; stress genes (AMRFinderPlus)</h2>
+      <p>Genes detected on the post-polish assembly. Matched against an organism-specific database when GTDB-Tk found a species AMRFinderPlus recognizes, otherwise the generic database — a generic-database result is broader but less precise.</p>
+    </div>
+    <div class="overview">
+      {"".join(tiles)}
+    </div>
+    {gene_table_block}
+    <div class="detail-block">
+      <h3>Per-sample results</h3>
+      <div class="table-scroll"><table><thead><tr>
+        <th>Sample</th><th class="label-cell">Organism (database match)</th>
+        <th>AMR</th><th>Stress</th><th>Virulence</th><th class="label-cell">Genes</th>
+      </tr></thead><tbody>{"".join(sample_rows)}</tbody></table></div>
+    </div>
+  </section>
+'''
+
+
 # ─── cards + table ──────────────────────────────────────────────────────────
 
 VERDICT_CHIP = {
@@ -538,6 +749,8 @@ def main():
         tiles.append('<div class="stat is-neutral"><div class="n">{}</div><div class="label">No comparison (Unicycler)</div></div>'.format(n_na))
 
     trend_html = build_trend_section(samples)
+    taxonomy_section_html = build_taxonomy_section(samples)
+    amr_section_html = build_amr_section(samples)
     cards_html = "".join(sample_card_html(s) for s in samples)
     table_html = table_rows_html(samples)
 
@@ -553,6 +766,8 @@ def main():
                 .replace("{{N_SAMPLES}}", str(n_total))
                 .replace("{{OVERVIEW_TILES}}", "".join(tiles))
                 .replace("{{TREND_SECTION}}", trend_html)
+                .replace("{{TAXONOMY_SECTION}}", taxonomy_section_html)
+                .replace("{{AMR_SECTION}}", amr_section_html)
                 .replace("{{CARDS_HTML}}", cards_html)
                 .replace("{{TABLE_ROWS}}", table_html))
 
