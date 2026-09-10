@@ -35,6 +35,13 @@ CHECKM2_DB="${HOME}/checkm2_db/CheckM2_database/uniref100.KO.1.dmnd"
 BAKTA_DB="${HOME}/bakta_db/db"
 GTDBTK_DIR="${HOME}/gtdbtk_db"
 
+# Release do GTDB-Tk. DEVE bater com o nome da pasta em params.gtdbtk_db do
+# nextflow.config (hoje: gtdbtk_db/release232). Baixar de 'latest' não é
+# reprodutível: quando o GTDB publica um release novo, 'latest' passa a apontar
+# pra ele e deixa de casar com o nextflow.config. Ao atualizar, mude os dois.
+GTDBTK_RELEASE="release232"
+GTDBTK_RELEASE_SUBDIR="232.0"
+
 echo "=== $(date -Iseconds) — CheckM2 ==="
 if [ -f "${DB_STATUS_DIR}/checkm2.done" ]; then
     echo "    já concluído, pulando."
@@ -75,7 +82,21 @@ elif [ -d "${GTDBTK_DIR}" ] && [ -n "$(find "${GTDBTK_DIR}" -mindepth 1 -maxdept
     echo "    banco já parece extraído em ${GTDBTK_DIR}, marcando sem baixar de novo."
     touch "${DB_STATUS_DIR}/gtdbtk.done"
 else
-    GTDBTK_URL="https://data.gtdb.ecogenomic.org/releases/latest/auxillary_files/gtdbtk_package/full_package/gtdbtk_data.tar.gz"
+    # URL versionada (reprodutível) com fallback pra 'latest' se o layout do
+    # servidor mudar. O gtdbtk_r<N>_data.tar.gz extrai numa pasta de topo
+    # 'release<N>/' — exatamente o que o params.gtdbtk_db do nextflow.config espera.
+    GTDBTK_REL_NUM="${GTDBTK_RELEASE#release}"
+    GTDBTK_URL_PINNED="https://data.gtdb.ecogenomic.org/releases/${GTDBTK_RELEASE}/${GTDBTK_RELEASE_SUBDIR}/auxillary_files/gtdbtk_package/full_package/gtdbtk_r${GTDBTK_REL_NUM}_data.tar.gz"
+    GTDBTK_URL_LATEST="https://data.gtdb.ecogenomic.org/releases/latest/auxillary_files/gtdbtk_package/full_package/gtdbtk_data.tar.gz"
+    if curl -sfI --max-time 30 "${GTDBTK_URL_PINNED}" >/dev/null 2>&1; then
+        GTDBTK_URL="${GTDBTK_URL_PINNED}"
+        echo "    usando release fixado: ${GTDBTK_RELEASE}"
+    else
+        GTDBTK_URL="${GTDBTK_URL_LATEST}"
+        echo "    URL do release ${GTDBTK_RELEASE} indisponível — caindo pra 'latest'."
+        echo "    ATENÇÃO: se 'latest' já for outro release, a pasta extraída não vai"
+        echo "    bater com params.gtdbtk_db (${GTDBTK_RELEASE}) do nextflow.config."
+    fi
     GTDBTK_TARBALL="${GTDBTK_DIR}/gtdbtk_data.tar.gz"
     mkdir -p "${GTDBTK_DIR}"
 
@@ -91,8 +112,14 @@ else
         echo "    download concluído, descompactando com pigz..."
         if pigz -dc -p "$(nproc)" "${GTDBTK_TARBALL}" | tar xf - -C "${GTDBTK_DIR}"; then
             rm -f "${GTDBTK_TARBALL}"
-            touch "${DB_STATUS_DIR}/gtdbtk.done"
-            echo "    concluído."
+            if [ -d "${GTDBTK_DIR}/${GTDBTK_RELEASE}" ]; then
+                touch "${DB_STATUS_DIR}/gtdbtk.done"
+                echo "    concluído — ${GTDBTK_DIR}/${GTDBTK_RELEASE}"
+            else
+                echo "    ERRO: extraiu, mas não há pasta '${GTDBTK_RELEASE}' em ${GTDBTK_DIR}."
+                echo "    Apareceu: $(find "${GTDBTK_DIR}" -mindepth 1 -maxdepth 1 -type d -printf '%f ' 2>/dev/null)"
+                echo "    Alinhe GTDBTK_RELEASE (aqui) e params.gtdbtk_db (nextflow.config). gtdbtk.done NÃO marcado."
+            fi
         else
             echo "    falha na descompactação — tarball mantido em ${GTDBTK_TARBALL} pra não perder o download."
         fi

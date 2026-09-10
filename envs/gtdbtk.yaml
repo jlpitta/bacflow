@@ -4,4 +4,4 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - gtdbtk
+  - gtdbtk=2.7.2  # casa com gtdbtk_db/release232 (nextflow.config) e com a bioinfo2
