@@ -44,17 +44,38 @@ step_end() {
     printf "    concluído em %02d:%02d\n" $((elapsed / 60)) $((elapsed % 60))
 }
 
-# detecta gerenciador de pacotes disponível
+# detecta gerenciador de pacotes disponível; se nenhum existir, baixa e
+# instala o Miniforge silenciosamente (sem sudo, sem prompts) em vez de
+# abortar — cobre o caso de servidor novo/limpo sem conda pré-instalado.
+BOOTSTRAPPED_MINIFORGE=false
+MINIFORGE_PREFIX="${HOME}/miniforge3"
+
 if command -v mamba &>/dev/null; then
     PKG=mamba
 elif command -v micromamba &>/dev/null; then
     PKG=micromamba
 elif command -v conda &>/dev/null; then
     PKG=conda
+elif [ -x "${MINIFORGE_PREFIX}/bin/mamba" ]; then
+    # instalado em execução anterior desta mesma máquina, mas fora do PATH
+    PKG="${MINIFORGE_PREFIX}/bin/mamba"
 else
-    echo "ERRO: nenhum gerenciador conda encontrado (mamba, micromamba ou conda)."
-    echo "Instale o Miniforge: https://github.com/conda-forge/miniforge"
-    exit 1
+    echo "Nenhum gerenciador conda encontrado (mamba, micromamba ou conda)."
+    echo "Baixando e instalando o Miniforge em ${MINIFORGE_PREFIX} (sem sudo, sem prompts)..."
+    echo ""
+
+    MINIFORGE_TMP="$(mktemp -d)"
+    MINIFORGE_INSTALLER="${MINIFORGE_TMP}/Miniforge3.sh"
+    MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname -s)-$(uname -m).sh"
+
+    curl -fsSL -o "${MINIFORGE_INSTALLER}" "${MINIFORGE_URL}"
+    bash "${MINIFORGE_INSTALLER}" -b -p "${MINIFORGE_PREFIX}"
+    rm -rf "${MINIFORGE_TMP}"
+
+    PKG="${MINIFORGE_PREFIX}/bin/mamba"
+    BOOTSTRAPPED_MINIFORGE=true
+    echo ""
+    echo "Miniforge instalado em ${MINIFORGE_PREFIX}."
 fi
 
 echo "Usando: ${PKG}"
@@ -110,9 +131,18 @@ echo ""
 echo "Para usar o nextflow instalado no ambiente, adicione ao seu ~/.bashrc:"
 echo "  alias nextflow='${PKG} run -n bacflow-tools nextflow'"
 echo ""
-echo "Ou ative o ambiente manualmente antes de rodar:"
-echo "  ${PKG} activate bacflow-tools"
-echo ""
+if [ "${BOOTSTRAPPED_MINIFORGE}" = true ]; then
+    echo "Miniforge foi instalado agora, sem 'conda init' (instalação silenciosa) —"
+    echo "'${PKG} activate bacflow-tools' direto no shell atual não vai funcionar ainda."
+    echo "Use o alias acima (não exige ativação), ou rode uma vez:"
+    echo "  ${MINIFORGE_PREFIX}/bin/conda init bash && exec bash"
+    echo "para poder usar 'conda activate' normalmente depois."
+    echo ""
+else
+    echo "Ou ative o ambiente manualmente antes de rodar:"
+    echo "  ${PKG} activate bacflow-tools"
+    echo ""
+fi
 echo "IMPORTANTE: os bancos de dados (CheckM2/Bakta/GTDB-Tk) continuam baixando"
 echo "em background — a instalação dos ambientes terminou, mas o pipeline só"
 echo "roda de fato quando db_status/checkm2.done e db_status/bakta.done existirem"
