@@ -82,6 +82,11 @@ elif [ -d "${GTDBTK_DIR}" ] && [ -n "$(find "${GTDBTK_DIR}" -mindepth 1 -maxdept
     echo "    banco já parece extraído em ${GTDBTK_DIR}, marcando sem baixar de novo."
     touch "${DB_STATUS_DIR}/gtdbtk.done"
 else
+    # bacflow-tools traz pigz + aria2c via conda (pinados no envs/tools.yaml) —
+    # evita depender de pacotes de sistema (apt/sudo), que nem sempre estão
+    # disponíveis (achado testando em servidor sem sudo).
+    conda activate bacflow-tools
+
     # URL versionada (reprodutível) com fallback pra 'latest' se o layout do
     # servidor mudar. O gtdbtk_r<N>_data.tar.gz extrai numa pasta de topo
     # 'release<N>/' — exatamente o que o params.gtdbtk_db do nextflow.config espera.
@@ -109,8 +114,15 @@ else
     fi
 
     if [ "${download_ok}" = "1" ]; then
-        echo "    download concluído, descompactando com pigz..."
-        if pigz -dc -p "$(nproc)" "${GTDBTK_TARBALL}" | tar xf - -C "${GTDBTK_DIR}"; then
+        extract_ok=0
+        if command -v pigz &>/dev/null; then
+            echo "    download concluído, descompactando com pigz..."
+            pigz -dc -p "$(nproc)" "${GTDBTK_TARBALL}" | tar xf - -C "${GTDBTK_DIR}" && extract_ok=1
+        else
+            echo "    download concluído, pigz indisponível — descompactando com gzip (mais lento)..."
+            tar xzf "${GTDBTK_TARBALL}" -C "${GTDBTK_DIR}" && extract_ok=1
+        fi
+        if [ "${extract_ok}" = "1" ]; then
             rm -f "${GTDBTK_TARBALL}"
             if [ -d "${GTDBTK_DIR}/${GTDBTK_RELEASE}" ]; then
                 touch "${DB_STATUS_DIR}/gtdbtk.done"
@@ -124,6 +136,8 @@ else
             echo "    falha na descompactação — tarball mantido em ${GTDBTK_TARBALL} pra não perder o download."
         fi
     fi
+
+    conda deactivate
 fi
 
 echo "=== $(date -Iseconds) — AMRFinderPlus ==="
