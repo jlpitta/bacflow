@@ -11,7 +11,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_STATUS_DIR="${SCRIPT_DIR}/db_status"
 mkdir -p "${DB_STATUS_DIR}"
 
-source "${HOME}/miniforge3/etc/profile.d/conda.sh"
+# Acha o conda.sh de QUALQUER instalação já em uso (miniforge3, anaconda3,
+# miniconda3, mambaforge...) em vez de assumir ~/miniforge3 — o hardcode
+# antigo quebrava em servidor que só tem outra distribuição (ex: anaconda3
+# em jpitta@carloschagas). install_envs.sh já exige mamba/micromamba/conda
+# no PATH pra rodar, e este script sempre roda como filho dele (nohup), então
+# herda o mesmo PATH -- 'conda info --base'/'mamba info --base' resolvem.
+if command -v conda &>/dev/null; then
+    CONDA_BASE="$(conda info --base)"
+elif command -v mamba &>/dev/null; then
+    CONDA_BASE="$(mamba info --base 2>/dev/null)"
+fi
+CONDA_BASE="${CONDA_BASE:-${HOME}/miniforge3}"
+
+if [ ! -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]; then
+    echo "ERRO: não achei ${CONDA_BASE}/etc/profile.d/conda.sh."
+    echo "Rode install_envs.sh primeiro (ele detecta mamba/micromamba/conda)."
+    exit 1
+fi
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 retry_cmd() {
     local max_attempts=3
