@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process UNICYCLER {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_high'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/assembly/unicycler" }, mode: 'copy'

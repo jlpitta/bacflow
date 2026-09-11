@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process BAKTA {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/annotation/bakta" }, mode: 'copy'

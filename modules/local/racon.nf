@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process RACON {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/polishing/racon" }, mode: 'copy'

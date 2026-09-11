@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process QUAST {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/quast" }, mode: 'copy'
@@ -26,6 +27,7 @@ process QUAST {
 
 process QUAST_PREPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/quast_prepolish" }, mode: 'copy'
@@ -50,6 +52,7 @@ process QUAST_PREPOLISH {
 
 process QUAST_POSTPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/quast_postpolish" }, mode: 'copy'

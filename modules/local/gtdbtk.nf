@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process GTDBTK {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-gtdbtk"
     publishDir { "${params.outdir}/${sample}/taxonomy/gtdbtk" }, mode: 'copy'

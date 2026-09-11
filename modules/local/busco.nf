@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process BUSCO {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/busco" }, mode: 'copy'
@@ -26,6 +27,7 @@ process BUSCO {
 
 process BUSCO_PREPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/busco_prepolish" }, mode: 'copy'
@@ -50,6 +52,7 @@ process BUSCO_PREPOLISH {
 
 process BUSCO_POSTPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/busco_postpolish" }, mode: 'copy'

@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process CHECKM2 {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-checkm2"
     publishDir { "${params.outdir}/${sample}/qc/checkm2" }, mode: 'copy'
@@ -25,6 +26,7 @@ process CHECKM2 {
 
 process CHECKM2_PREPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-checkm2"
     publishDir { "${params.outdir}/${sample}/qc/checkm2_prepolish" }, mode: 'copy'
@@ -48,6 +50,7 @@ process CHECKM2_PREPOLISH {
 
 process CHECKM2_POSTPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_medium'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-checkm2"
     publishDir { "${params.outdir}/${sample}/qc/checkm2_postpolish" }, mode: 'copy'

@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process FASTQC_RAW {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastqc_raw" }, mode: 'copy'
@@ -20,6 +21,7 @@ process FASTQC_RAW {
 
 process FASTQC_TRIMMED {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastqc_trimmed" }, mode: 'copy'

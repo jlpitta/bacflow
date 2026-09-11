@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process SEQKIT_DOWNSAMPLE {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
 

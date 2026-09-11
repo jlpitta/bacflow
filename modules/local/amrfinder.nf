@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process MATCH_ORGANISM {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/taxonomy/amrfinder_organism" }, mode: 'copy'
@@ -26,6 +27,7 @@ process MATCH_ORGANISM {
 // which AMR genes polishing rescued from a frameshift/indel.
 process AMRFINDER_PREPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/amr/amrfinder_prepolish" }, mode: 'copy'
@@ -58,6 +60,7 @@ process AMRFINDER_PREPOLISH {
 // testing before wiring this in).
 process AMRFINDER_POSTPOLISH {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/amr/amrfinder_postpolish" }, mode: 'copy'

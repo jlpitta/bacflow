@@ -2,6 +2,7 @@
 // At Fiocruz-PE
 process FASTP {
     tag { sample }
+    errorStrategy 'ignore'
     label 'process_low'
     conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastp" }, mode: 'copy'
