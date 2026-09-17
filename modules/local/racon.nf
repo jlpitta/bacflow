@@ -4,7 +4,7 @@ process RACON {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/polishing/racon" }, mode: 'copy'
 
     input:
@@ -20,5 +20,11 @@ process RACON {
     racon \
         --threads ${task.cpus} \
         ${reads} overlaps.paf ${assembly} > ${sample}.racon.fasta
+    """
+
+    stub:
+    """
+    echo ">stub_contig_1" > ${sample}.racon.fasta
+    echo "ACGT" >> ${sample}.racon.fasta
     """
 }

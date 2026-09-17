@@ -7,3 +7,10 @@ test_run_c_launch.log
 test_matrix_logs/
 logs/
 db_status/
+envs/bacflow-*
+results/
+work/
+*.fai
+*.mmi
+test_matrix_run_*.log
+test_fix_*.log

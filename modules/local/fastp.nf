@@ -4,7 +4,7 @@ process FASTP {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastp" }, mode: 'copy'
 
     input:
@@ -26,5 +26,10 @@ process FASTP {
         --qualified_quality_phred 20 \
         --length_required 50 \
         --thread ${task.cpus}
+    """
+
+    stub:
+    """
+    touch ${sample}_R1.clean.fastq.gz ${sample}_R2.clean.fastq.gz ${sample}.fastp.json ${sample}.fastp.html
     """
 }

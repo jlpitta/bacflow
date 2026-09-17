@@ -4,7 +4,7 @@ process QUAST {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/quast" }, mode: 'copy'
 
     input:
@@ -23,13 +23,19 @@ process QUAST {
         --output-dir quast_output \
         --threads ${task.cpus}
     """
+
+    stub:
+    """
+    mkdir -p quast_output
+    touch quast_output/report.tsv
+    """
 }
 
 process QUAST_PREPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/quast_prepolish" }, mode: 'copy'
 
     input:
@@ -48,13 +54,19 @@ process QUAST_PREPOLISH {
         --output-dir quast_output \
         --threads ${task.cpus}
     """
+
+    stub:
+    """
+    mkdir -p quast_output
+    touch quast_output/report.tsv
+    """
 }
 
 process QUAST_POSTPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/quast_postpolish" }, mode: 'copy'
 
     input:
@@ -72,5 +84,11 @@ process QUAST_POSTPOLISH {
         ${ref_arg} \
         --output-dir quast_output \
         --threads ${task.cpus}
+    """
+
+    stub:
+    """
+    mkdir -p quast_output
+    touch quast_output/report.tsv
     """
 }

@@ -4,7 +4,7 @@ process FASTQC_RAW {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastqc_raw" }, mode: 'copy'
 
     input:
@@ -17,13 +17,18 @@ process FASTQC_RAW {
     """
     fastqc ${r1} ${r2} --threads ${task.cpus} --outdir .
     """
+
+    stub:
+    """
+    touch stub_1.html stub_1.zip
+    """
 }
 
 process FASTQC_TRIMMED {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/fastqc_trimmed" }, mode: 'copy'
 
     input:
@@ -35,5 +40,10 @@ process FASTQC_TRIMMED {
     script:
     """
     fastqc ${r1} ${r2} --threads ${task.cpus} --outdir .
+    """
+
+    stub:
+    """
+    touch stub_1.html stub_1.zip
     """
 }

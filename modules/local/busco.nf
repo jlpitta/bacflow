@@ -4,7 +4,7 @@ process BUSCO {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/busco" }, mode: 'copy'
 
     input:
@@ -23,13 +23,18 @@ process BUSCO {
         --cpu ${task.cpus} \
         --out_path .
     """
+
+    stub:
+    """
+    mkdir -p busco_output
+    """
 }
 
 process BUSCO_PREPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/busco_prepolish" }, mode: 'copy'
 
     input:
@@ -48,13 +53,18 @@ process BUSCO_PREPOLISH {
         --cpu ${task.cpus} \
         --out_path .
     """
+
+    stub:
+    """
+    mkdir -p busco_output
+    """
 }
 
 process BUSCO_POSTPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/busco_postpolish" }, mode: 'copy'
 
     input:
@@ -72,5 +82,10 @@ process BUSCO_POSTPOLISH {
         -m genome \
         --cpu ${task.cpus} \
         --out_path .
+    """
+
+    stub:
+    """
+    mkdir -p busco_output
     """
 }

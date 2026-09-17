@@ -4,7 +4,7 @@ process NEXTPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/polishing/nextpolish" }, mode: 'copy'
 
     input:
@@ -43,5 +43,11 @@ EOF
     nextPolish nextpolish.cfg
 
     cp np_work/genome.nextpolish.fasta ${sample}.nextpolish.fasta
+    """
+
+    stub:
+    """
+    echo ">stub_contig_1" > ${sample}.nextpolish.fasta
+    echo "ACGT" >> ${sample}.nextpolish.fasta
     """
 }

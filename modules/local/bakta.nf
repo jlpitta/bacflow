@@ -4,7 +4,7 @@ process BAKTA {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
+    conda "${projectDir}/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/annotation/bakta" }, mode: 'copy'
 
     input:
@@ -22,5 +22,11 @@ process BAKTA {
         --threads ${task.cpus} \
         --force \
         ${assembly}
+    """
+
+    stub:
+    """
+    mkdir -p bakta_output
+    touch bakta_output/${sample}.fna bakta_output/${sample}.faa bakta_output/${sample}.gff3
     """
 }

@@ -4,7 +4,7 @@ process FLYE {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_high'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/assembly/flye" }, mode: 'copy'
 
     input:
@@ -24,5 +24,13 @@ process FLYE {
         --threads ${task.cpus}
 
     cp flye_output/assembly.fasta ${sample}.assembly.fasta
+    """
+
+    stub:
+    """
+    mkdir -p flye_output
+    echo ">stub_contig_1" > ${sample}.assembly.fasta
+    echo "ACGT" >> ${sample}.assembly.fasta
+    echo -e "seq_name\tlength\tcov.\tcirc.\trepeat\tmult.\talt_group\tgraph_path" > flye_output/assembly_info.txt
     """
 }

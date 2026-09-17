@@ -4,7 +4,7 @@ process SAMPLE_SUMMARY {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/dashboard" }, mode: 'copy'
 
     input:
@@ -44,28 +44,45 @@ process SAMPLE_SUMMARY {
         ${amrfinder_pre_args} \
         --out ${sample}.summary.json
     """
+
+    stub:
+    """
+    echo '{"sample": "${sample}", "stub": true}' > ${sample}.summary.json
+    """
 }
 
 process DASHBOARD {
     tag 'dashboard'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}" }, mode: 'copy'
 
     input:
     path summaries
     val run_commit
     val nextflow_version
+    val outdir_abs
 
     output:
     path "dashboard.html"
 
     script:
+    // execution_trace.txt is written by Nextflow itself (top-level trace{}
+    // block in nextflow.config), not staged as a channel input -- read
+    // straight from outdir_abs. Missing on a run without the trace block
+    // enabled (e.g. an older config); generate_dashboard.py handles that
+    // (--trace is optional, section just doesn't render).
     """
     generate_dashboard.py \
         --summary-dir . \
         --out dashboard.html \
         --run-commit "${run_commit}" \
-        --nextflow-version "${nextflow_version}"
+        --nextflow-version "${nextflow_version}" \
+        --trace "${outdir_abs}/pipeline_info/execution_trace.txt"
+    """
+
+    stub:
+    """
+    touch dashboard.html
     """
 }

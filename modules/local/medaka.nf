@@ -4,7 +4,7 @@ process MEDAKA {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-medaka"
+    conda "${projectDir}/envs/bacflow-medaka"
     publishDir { "${params.outdir}/${sample}/polishing/medaka" }, mode: 'copy'
 
     input:
@@ -24,5 +24,11 @@ process MEDAKA {
         -t ${task.cpus}
 
     cp medaka_output/consensus.fasta ${sample}.medaka.fasta
+    """
+
+    stub:
+    """
+    echo ">stub_contig_1" > ${sample}.medaka.fasta
+    echo "ACGT" >> ${sample}.medaka.fasta
     """
 }

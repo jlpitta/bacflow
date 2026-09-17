@@ -4,7 +4,7 @@ process UNICYCLER {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_high'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/assembly/unicycler" }, mode: 'copy'
 
     input:
@@ -21,5 +21,10 @@ process UNICYCLER {
         --threads ${task.cpus}
 
     cp unicycler_output/assembly.fasta ${sample}.assembly.fasta
+    """
+
+    stub:
+    """
+    touch ${sample}.assembly.fasta
     """
 }

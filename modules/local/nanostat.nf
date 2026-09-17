@@ -4,7 +4,7 @@ process NANOSTAT_RAW {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/nanostat_raw" }, mode: 'copy'
 
     input:
@@ -17,13 +17,18 @@ process NANOSTAT_RAW {
     """
     NanoStat --fastq ${reads} --threads ${task.cpus} > ${sample}.nanostat_raw.txt
     """
+
+    stub:
+    """
+    touch ${sample}.nanostat_raw.txt
+    """
 }
 
 process NANOSTAT_TRIMMED {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/nanostat_trimmed" }, mode: 'copy'
 
     input:
@@ -35,5 +40,10 @@ process NANOSTAT_TRIMMED {
     script:
     """
     NanoStat --fastq ${reads} --threads ${task.cpus} > ${sample}.nanostat_trimmed.txt
+    """
+
+    stub:
+    """
+    touch ${sample}.nanostat_trimmed.txt
     """
 }

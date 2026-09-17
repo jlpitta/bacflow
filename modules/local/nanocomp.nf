@@ -4,7 +4,7 @@ process NANOCOMP {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/nanocomp" }, mode: 'copy'
 
     input:
@@ -20,5 +20,10 @@ process NANOCOMP {
         --names raw trimmed \
         --outdir . \
         --threads ${task.cpus}
+    """
+
+    stub:
+    """
+    touch NanoComp-report.html NanoStats.txt
     """
 }

@@ -81,29 +81,40 @@ fi
 echo "Usando: ${PKG}"
 echo ""
 
+# Envs self-contained dentro do próprio repo (${SCRIPT_DIR}/envs/bacflow-X),
+# em vez de nomeados na instalação global de conda -- não depende de o
+# gerenciador do usuário ser miniforge (~/miniforge3) ou outra distribuição
+# (ex. ~/anaconda3): os módulos referenciam o env via "${projectDir}/envs/
+# bacflow-X" (variável implícita do Nextflow), então funciona igual em
+# qualquer conta, independente do que já está instalado em $HOME.
+ENVS_DIR="${SCRIPT_DIR}/envs"
+
+create_or_update_env() {
+    local name="$1"
+    local yaml="$2"
+    local prefix="${ENVS_DIR}/${name}"
+    ${PKG} create --prefix "${prefix}" -f "${yaml}" --yes || \
+        ${PKG} env update --prefix "${prefix}" -f "${yaml}" --prune
+}
+
 step_start "Instalando bacflow-tools"
-${PKG} env create -f "${SCRIPT_DIR}/envs/tools.yaml" --yes || \
-    ${PKG} env update -f "${SCRIPT_DIR}/envs/tools.yaml" --prune
+create_or_update_env "bacflow-tools" "${SCRIPT_DIR}/envs/tools.yaml"
 step_end
 
 step_start "Instalando bacflow-medaka"
-${PKG} env create -f "${SCRIPT_DIR}/envs/medaka.yaml" --yes || \
-    ${PKG} env update -f "${SCRIPT_DIR}/envs/medaka.yaml" --prune
+create_or_update_env "bacflow-medaka" "${SCRIPT_DIR}/envs/medaka.yaml"
 step_end
 
 step_start "Instalando bacflow-checkm2"
-${PKG} env create -f "${SCRIPT_DIR}/envs/checkm2.yaml" --yes || \
-    ${PKG} env update -f "${SCRIPT_DIR}/envs/checkm2.yaml" --prune
+create_or_update_env "bacflow-checkm2" "${SCRIPT_DIR}/envs/checkm2.yaml"
 step_end
 
 step_start "Instalando bacflow-bakta"
-${PKG} env create -f "${SCRIPT_DIR}/envs/bakta.yaml" --yes || \
-    ${PKG} env update -f "${SCRIPT_DIR}/envs/bakta.yaml" --prune
+create_or_update_env "bacflow-bakta" "${SCRIPT_DIR}/envs/bakta.yaml"
 step_end
 
 step_start "Instalando bacflow-gtdbtk"
-${PKG} env create -f "${SCRIPT_DIR}/envs/gtdbtk.yaml" --yes || \
-    ${PKG} env update -f "${SCRIPT_DIR}/envs/gtdbtk.yaml" --prune
+create_or_update_env "bacflow-gtdbtk" "${SCRIPT_DIR}/envs/gtdbtk.yaml"
 step_end
 
 # Bancos de dados (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB) são grandes
@@ -125,22 +136,22 @@ TOTAL_ELAPSED=$(( $(date +%s) - INSTALL_START ))
 echo ""
 printf "Instalação concluída em %02d:%02d\n" $((TOTAL_ELAPSED / 60)) $((TOTAL_ELAPSED % 60))
 echo ""
-echo "Ambientes instalados:"
-${PKG} env list | grep -E 'bacflow'
+echo "Ambientes instalados (self-contained, dentro do repo):"
+ls -1 "${ENVS_DIR}" | grep -E '^bacflow-' | sed "s|^|  ${ENVS_DIR}/|"
 echo ""
 echo "Para usar o nextflow instalado no ambiente, adicione ao seu ~/.bashrc:"
-echo "  alias nextflow='${PKG} run -n bacflow-tools nextflow'"
+echo "  alias nextflow='${PKG} run -p ${ENVS_DIR}/bacflow-tools nextflow'"
 echo ""
 if [ "${BOOTSTRAPPED_MINIFORGE}" = true ]; then
     echo "Miniforge foi instalado agora, sem 'conda init' (instalação silenciosa) —"
-    echo "'${PKG} activate bacflow-tools' direto no shell atual não vai funcionar ainda."
+    echo "'${PKG} activate ${ENVS_DIR}/bacflow-tools' direto no shell atual não vai funcionar ainda."
     echo "Use o alias acima (não exige ativação), ou rode uma vez:"
     echo "  ${MINIFORGE_PREFIX}/bin/conda init bash && exec bash"
     echo "para poder usar 'conda activate' normalmente depois."
     echo ""
 else
     echo "Ou ative o ambiente manualmente antes de rodar:"
-    echo "  ${PKG} activate bacflow-tools"
+    echo "  ${PKG} activate ${ENVS_DIR}/bacflow-tools"
     echo ""
 fi
 echo "IMPORTANTE: os bancos de dados (CheckM2/Bakta/GTDB-Tk) continuam baixando"

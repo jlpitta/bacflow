@@ -4,7 +4,7 @@ process GTDBTK {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-gtdbtk"
+    conda "${projectDir}/envs/bacflow-gtdbtk"
     publishDir { "${params.outdir}/${sample}/taxonomy/gtdbtk" }, mode: 'copy'
 
     input:
@@ -22,5 +22,11 @@ process GTDBTK {
         --extension fasta \
         --prefix ${sample} \
         --cpus ${task.cpus}
+    """
+
+    stub:
+    """
+    mkdir -p gtdbtk_output
+    touch gtdbtk_output/${sample}.bac120.summary.tsv
     """
 }

@@ -2,7 +2,7 @@
 // At Fiocruz-PE
 process MULTIQC {
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/multiqc" }, mode: 'copy'
 
     input:
@@ -23,5 +23,11 @@ process MULTIQC {
         --ignore '*nanocomp*' \
         --outdir . \
         --force
+    """
+
+    stub:
+    """
+    touch multiqc_report.html
+    mkdir -p multiqc_data
     """
 }

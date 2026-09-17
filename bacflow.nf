@@ -624,6 +624,14 @@ workflow {
         error "Unknown --mode '${params.mode}'. Use 'denovo' or 'reference'."
     }
 
+    // Bakta/GTDB-Tk/AMRFinderPlus mixed in here too — MultiQC doesn't parse
+    // these itself (it scans outdir_abs directly, see multiqc.nf), but
+    // ch_multiqc_files.collect() is what MULTIQC waits on before starting, and
+    // without these four it could fire before annotation/taxonomy/AMR finish
+    // publishing, making the report's file counts inconsistent run to run.
+    ch_multiqc_files = ch_multiqc_files
+        .mix(ch_bakta_out, ch_gtdbtk_out, ch_amrfinder_pre_out, ch_amrfinder_post_out)
+
     MULTIQC(ch_multiqc_files.collect(), outdir_abs)
-    DASHBOARD(ch_summary_json.collect(), workflow.commitId ?: 'n/d', workflow.nextflow.version.toString())
+    DASHBOARD(ch_summary_json.collect(), workflow.commitId ?: 'n/d', workflow.nextflow.version.toString(), outdir_abs)
 }

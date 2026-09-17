@@ -4,7 +4,7 @@ process SEQKIT_DOWNSAMPLE {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
 
     input:
     tuple val(sample), path(reads)
@@ -15,5 +15,10 @@ process SEQKIT_DOWNSAMPLE {
     script:
     """
     seqkit head -n ${params.downsample} ${reads} -o ${sample}.downsampled.fastq.gz
+    """
+
+    stub:
+    """
+    touch ${sample}.downsampled.fastq.gz
     """
 }

@@ -3,6 +3,7 @@
 # At Fiocruz-PE
 """Aggregate per-sample summary JSONs into the final bacflow dashboard.html."""
 import argparse
+import csv
 import datetime
 import glob
 import html
@@ -390,6 +391,68 @@ def build_taxonomy_section(samples):
 '''
 
 
+# ─── incomplete assemblies (parsed from the Nextflow execution trace) ───────
+# errorStrategy 'ignore' drops a failed task silently — the sample just never
+# shows up in the dashboard, with no explanation. The trace file (1 line per
+# task, `tag` = sample name since every process is `tag { sample }`) is the
+# only remaining record of what happened to it.
+
+FAILED_STATUSES = {"FAILED", "ABORTED"}
+
+
+def parse_trace_failures(trace_path):
+    """tag (sample name) -> list of {process, exit, workdir} for FAILED/ABORTED tasks."""
+    failures = {}
+    if not trace_path or not os.path.exists(trace_path):
+        return failures
+    with open(trace_path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            if row.get("status") not in FAILED_STATUSES:
+                continue
+            tag = (row.get("tag") or "").strip()
+            if not tag:
+                continue
+            failures.setdefault(tag, []).append({
+                "process": row.get("process") or "?",
+                "exit": row.get("exit") or "?",
+                "workdir": row.get("workdir") or "",
+            })
+    return failures
+
+
+def build_incomplete_section(trace_failures, completed_sample_names):
+    """Samples with a FAILED/ABORTED task and NO usable final result (no
+    summary.json => not in completed_sample_names) — not "had any failure",
+    since e.g. only AMRFINDER_PREPOLISH failing on an otherwise-fine sample
+    still produces a summary and doesn't belong here."""
+    incomplete = {tag: tasks for tag, tasks in trace_failures.items()
+                  if tag not in completed_sample_names}
+    if not incomplete:
+        return ""
+
+    rows = []
+    for sample in sorted(incomplete):
+        for t in incomplete[sample]:
+            workdir_cell = f'<span class="surveil-hint">{html.escape(t["workdir"])}</span>' if t["workdir"] else "—"
+            rows.append(f'<tr><td>{html.escape(sample)}</td><td class="label-cell">{html.escape(t["process"])}</td>'
+                        f'<td>{html.escape(str(t["exit"]))}</td><td class="label-cell">{workdir_cell}</td></tr>')
+
+    return f'''
+  <section class="trend-section">
+    <div class="trend-head">
+      <h2>Assemblies not completed</h2>
+      <p><b>{len(incomplete)}</b> sample(s) had a task fail (<code>errorStrategy 'ignore'</code>) and never produced a usable final result — parsed from <code>pipeline_info/execution_trace.txt</code>. Workdir is kept for manual debugging (<code>nextflow log</code> / inspect the task directory directly).</p>
+    </div>
+    <div class="detail-block">
+      <div class="table-scroll"><table><thead><tr>
+        <th>Sample</th><th class="label-cell">Failed process</th><th>Exit code</th><th class="label-cell">Workdir</th>
+      </tr></thead><tbody>{"".join(rows)}</tbody></table></div>
+    </div>
+  </section>
+'''
+
+
 # ─── AMR section (AMRFinderPlus, aggregated across all samples) ─────────────
 
 def build_amr_section(samples):
@@ -695,15 +758,45 @@ def sample_card_html(s):
     </article>'''
 
 
+def _no_comparison_row(sample_esc, input_text, mode, label, value_text):
+    """One table row for a single-call metric (Unicycler path — no pre/post
+    pair to diff against, but the value itself is real, not a placeholder)."""
+    return (f'<tr><td>{sample_esc}</td><td>{input_text}</td><td>{mode}</td>'
+            f'<td class="label-cell">{html.escape(label)}</td><td>{value_text}</td><td>{value_text}</td>'
+            f'<td>—</td><td><span class="verdict-td neutral">○ No comparison</span></td></tr>')
+
+
 def table_rows_html(samples):
     rows = []
     for s in samples:
         mode = "QUAST" if s["has_reference"] else "BUSCO"
         input_text = html.escape(INPUT_TYPE_LABEL[s["input_type"]])
+        sample_esc = html.escape(s["sample"])
         if not s["has_polish_comparison"]:
-            rows.append(f'<tr><td>{html.escape(s["sample"])}</td><td>{input_text}</td><td>{mode}</td>'
-                        f'<td class="label-cell">(Unicycler, no comparison)</td><td>—</td><td>—</td>'
-                        f'<td>—</td><td><span class="verdict-td neutral">○ No comparison</span></td></tr>')
+            # Unicycler has no pre/post pair, but CheckM2/BUSCO still ran
+            # once (single call) and summarize_sample.py already feeds real
+            # values under "post" for it — show those instead of a blanket
+            # "no comparison" row with no numbers at all.
+            c = s["checkm2"]["post"]
+            added_any = False
+            if c.get("completeness") is not None:
+                rows.append(_no_comparison_row(sample_esc, input_text, mode,
+                            "Completeness (CheckM2, %)", f'{c["completeness"]:.1f}'))
+                added_any = True
+            if c.get("contamination") is not None:
+                rows.append(_no_comparison_row(sample_esc, input_text, mode,
+                            "Contamination (CheckM2, %)", f'{c["contamination"]:.1f}'))
+                added_any = True
+            if s.get("busco"):
+                b = s["busco"]["post"]
+                if b.get("complete_pct") is not None:
+                    rows.append(_no_comparison_row(sample_esc, input_text, mode,
+                                "Complete (BUSCO, %)", f'{b["complete_pct"]:.1f}'))
+                    added_any = True
+            if not added_any:
+                rows.append(f'<tr><td>{sample_esc}</td><td>{input_text}</td><td>{mode}</td>'
+                            f'<td class="label-cell">(Unicycler, no data)</td><td>—</td><td>—</td>'
+                            f'<td>—</td><td><span class="verdict-td neutral">○ No comparison</span></td></tr>')
             continue
         for key, sig in s["signals"].items():
             label = METRIC_META[key][0]
@@ -723,6 +816,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--run-commit", default="")
     ap.add_argument("--nextflow-version", default="")
+    ap.add_argument("--trace", help="Nextflow execution_trace.txt, for the 'Assemblies not completed' section")
     args = ap.parse_args()
 
     files = sorted(glob.glob(os.path.join(args.summary_dir, "*.summary.json")))
@@ -732,6 +826,9 @@ def main():
             d = json.load(f)
         samples.append(compute_sample(d))
     samples.sort(key=lambda s: s["sample"])
+
+    trace_failures = parse_trace_failures(args.trace)
+    incomplete_section_html = build_incomplete_section(trace_failures, {s["sample"] for s in samples})
 
     n_total = len(samples)
     n_good = sum(1 for s in samples if s["verdict"] == "good")
@@ -768,6 +865,7 @@ def main():
                 .replace("{{TREND_SECTION}}", trend_html)
                 .replace("{{TAXONOMY_SECTION}}", taxonomy_section_html)
                 .replace("{{AMR_SECTION}}", amr_section_html)
+                .replace("{{INCOMPLETE_SECTION}}", incomplete_section_html)
                 .replace("{{CARDS_HTML}}", cards_html)
                 .replace("{{TABLE_ROWS}}", table_html))
 

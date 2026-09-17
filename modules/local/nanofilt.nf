@@ -4,7 +4,7 @@ process NANOFILT {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/qc/nanofilt" }, mode: 'copy'
 
     input:
@@ -17,5 +17,10 @@ process NANOFILT {
     """
     NanoFilt -q ${params.min_quality} -l ${params.min_length} \
         <(zcat ${reads}) | gzip > ${sample}.filtered.fastq.gz
+    """
+
+    stub:
+    """
+    touch ${sample}.filtered.fastq.gz
     """
 }

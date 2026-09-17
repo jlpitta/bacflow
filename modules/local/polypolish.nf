@@ -4,7 +4,7 @@ process POLYPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-tools"
+    conda "${projectDir}/envs/bacflow-tools"
     publishDir { "${params.outdir}/${sample}/polishing/polypolish" }, mode: 'copy'
 
     input:
@@ -25,5 +25,11 @@ process POLYPOLISH {
 
     polypolish polish ${assembly} filtered_r1.sam filtered_r2.sam \
         > ${sample}.polypolish.fasta
+    """
+
+    stub:
+    """
+    echo ">stub_contig_1" > ${sample}.polypolish.fasta
+    echo "ACGT" >> ${sample}.polypolish.fasta
     """
 }

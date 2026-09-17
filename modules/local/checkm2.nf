@@ -4,7 +4,7 @@ process CHECKM2 {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-checkm2"
+    conda "${projectDir}/envs/bacflow-checkm2"
     publishDir { "${params.outdir}/${sample}/qc/checkm2" }, mode: 'copy'
 
     input:
@@ -22,13 +22,19 @@ process CHECKM2 {
         --threads ${task.cpus} \
         -x fasta
     """
+
+    stub:
+    """
+    mkdir -p checkm2_output
+    touch checkm2_output/quality_report.tsv
+    """
 }
 
 process CHECKM2_PREPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-checkm2"
+    conda "${projectDir}/envs/bacflow-checkm2"
     publishDir { "${params.outdir}/${sample}/qc/checkm2_prepolish" }, mode: 'copy'
 
     input:
@@ -46,13 +52,19 @@ process CHECKM2_PREPOLISH {
         --threads ${task.cpus} \
         -x fasta
     """
+
+    stub:
+    """
+    mkdir -p checkm2_output
+    touch checkm2_output/quality_report.tsv
+    """
 }
 
 process CHECKM2_POSTPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_medium'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-checkm2"
+    conda "${projectDir}/envs/bacflow-checkm2"
     publishDir { "${params.outdir}/${sample}/qc/checkm2_postpolish" }, mode: 'copy'
 
     input:
@@ -69,5 +81,11 @@ process CHECKM2_POSTPOLISH {
         --database_path ${params.checkm2_db} \
         --threads ${task.cpus} \
         -x fasta
+    """
+
+    stub:
+    """
+    mkdir -p checkm2_output
+    touch checkm2_output/quality_report.tsv
     """
 }

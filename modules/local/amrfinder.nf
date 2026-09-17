@@ -4,7 +4,7 @@ process MATCH_ORGANISM {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
+    conda "${projectDir}/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/taxonomy/amrfinder_organism" }, mode: 'copy'
 
     input:
@@ -20,6 +20,11 @@ process MATCH_ORGANISM {
         --amrfinder-db ${params.amrfinder_db} \
         > organism.txt
     """
+
+    stub:
+    """
+    touch organism.txt
+    """
 }
 
 // Nucleotide-only baseline, no --organism -- run on the pre-polish assembly
@@ -29,7 +34,7 @@ process AMRFINDER_PREPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
+    conda "${projectDir}/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/amr/amrfinder_prepolish" }, mode: 'copy'
 
     input:
@@ -43,8 +48,14 @@ process AMRFINDER_PREPOLISH {
     amrfinder \
         -n ${assembly} \
         -d ${params.amrfinder_db} \
+        --plus \
         --threads ${task.cpus} \
         -o ${sample}.amrfinder_prepolish.tsv
+    """
+
+    stub:
+    """
+    touch ${sample}.amrfinder_prepolish.tsv
     """
 }
 
@@ -62,7 +73,7 @@ process AMRFINDER_POSTPOLISH {
     tag { sample }
     errorStrategy 'ignore'
     label 'process_low'
-    conda "${System.getenv('HOME')}/miniforge3/envs/bacflow-bakta"
+    conda "${projectDir}/envs/bacflow-bakta"
     publishDir { "${params.outdir}/${sample}/amr/amrfinder_postpolish" }, mode: 'copy'
 
     input:
@@ -80,8 +91,14 @@ process AMRFINDER_POSTPOLISH {
         -g ${bakta_output}/${sample}.gff3 \
         -a bakta \
         -d ${params.amrfinder_db} \
+        --plus \
         ${org_arg} \
         --threads ${task.cpus} \
         -o ${sample}.amrfinder_postpolish.tsv
+    """
+
+    stub:
+    """
+    touch ${sample}.amrfinder_postpolish.tsv
     """
 }
