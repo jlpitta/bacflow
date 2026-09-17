@@ -73,24 +73,30 @@ A single `--samplesheet` can freely mix hybrid, long-only and short-only samples
 ```
 Does the sample have long_reads?
 │
-├── YES ──► NanoFilt¹ ──► [Flye] ──► [Racon] (opt.) ──► [Medaka] ──► [QUAST³/BUSCO⁴/CheckM2⁵/AMRFinder¹⁰ pre-polish]
-│                                                                    │
-│           Short reads (if any) ─► FASTP² ─► [Polypolish] or [NextPolish] (opt.)
-│                                                                    │
-│                                                                    ▼
-│                                                      [QUAST³/BUSCO⁴/CheckM2⁵ post-polish] ──┐
-│                                                                                              │
-└── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
-            (short-read-only, no Racon/Medaka/extra polish,                                   │
-             no real "pre-polish" state — single call, as always)                             ▼
-                                                             [Bakta⁷ / GTDB-Tk⁸ / AMRFinder¹⁰ / VFDB¹¹]
-                                                                          (per sample, final
-                                                                           assembly)
-                                                                                              │
-                                                                                              ▼
-                                                                          [MultiQC⁶ / Dashboard⁹]
-                                                                          (end of run, all samples
-                                                                           together)
+├── YES
+│    NanoFilt¹ → Flye → Racon (opt.) → Medaka
+│    │
+│    ├─► QUAST³/BUSCO⁴/CheckM2⁵/AMRFinder¹⁰ (pre-polish)
+│    │
+│    Short reads (if any) → FASTP²
+│    │
+│    ├─► Polypolish or NextPolish (opt.)
+│    │
+│    └─► QUAST³/BUSCO⁴/CheckM2⁵ (post-polish)
+│
+└── NO
+     Short reads → FASTP² → Unicycler
+     (short-read-only: no Racon/Medaka/extra polish,
+      no real "pre-polish" state — single call, as always)
+     │
+     └─► QUAST³/BUSCO⁴/CheckM2⁵
+
+Both branches converge on the final assembly (per sample):
+  ▼
+  Bakta⁷ / GTDB-Tk⁸ / AMRFinder¹⁰ / VFDB¹¹
+  │
+  ▼
+  MultiQC⁶ / Dashboard⁹  (end of run, all samples together)
 
 ¹ NanoFilt is bracketed by raw-vs-trimmed QC: NanoStat (before/after) + NanoComp
   (comparative HTML) — always runs in parallel, does not block the flow
