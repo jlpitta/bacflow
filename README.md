@@ -83,7 +83,7 @@ Does the sample have long_reads?
 └── NO ──► Short reads ─► FASTP² ─► [Unicycler] ──► [QUAST³/BUSCO⁴/CheckM2⁵] ─────────────────┤
             (short-read-only, no Racon/Medaka/extra polish,                                   │
              no real "pre-polish" state — single call, as always)                             ▼
-                                                                  [Bakta⁷ / GTDB-Tk⁸ / AMRFinder¹⁰]
+                                                             [Bakta⁷ / GTDB-Tk⁸ / AMRFinder¹⁰ / VFDB¹¹]
                                                                           (per sample, final
                                                                            assembly)
                                                                                               │
@@ -134,6 +134,16 @@ Does the sample have long_reads?
    match in AMRFinderPlus's curated organism list (~31 organisms) — that's
    expected and safe, it just falls back to the generic database instead of
    failing
+¹¹ VFDB (Virulence Factor Database) via `abricate`, on the final assembly —
+   same scope as Bakta/GTDB-Tk/AMRFinder above. Complements AMRFinderPlus's
+   `--plus` virulence search, whose curated gene set only covers a handful of
+   well-studied pathogens (Escherichia, Klebsiella pneumoniae, Staphylococcus
+   aureus, Vibrio cholerae, Campylobacter, Salmonella) — genomes outside that
+   group come back with 0 AMRFinderPlus virulence hits even with `--plus`,
+   not because the genes are absent but because that database has no
+   coverage there. VFDB has much broader taxonomic coverage for virulence
+   factors specifically. The dashboard's Virulence genes section merges both
+   sources, tagged by which one found each gene.
 ```
 
 See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is generated.
@@ -165,6 +175,7 @@ See [Read QC](#read-qc-raw-vs-trimmed) for details on where each report is gener
 | AMR (pre-polish) | AMRFinderPlus | Nucleotide-only baseline — Flye path only (`amr/amrfinder_prepolish/`) |
 | Organism match | `gtdb_to_amrfinder_organism.py` | Matches the GTDB-Tk classification to an AMRFinderPlus `--organism` value, or falls back to none (`taxonomy/amrfinder_organism/`) |
 | AMR (post-polish, always) | AMRFinderPlus | Full mode — nucleotide+protein+GFF from Bakta, organism-aware — final assembly, both paths (`amr/amrfinder_postpolish/`) |
+| Virulence (final assembly, always) | `abricate --db vfdb` | VFDB virulence factors, broader taxonomic coverage than AMRFinderPlus's curated list — final assembly, both paths (`amr/vfdb/`) |
 | Aggregation (end of run) | MultiQC | Single report combining FastQC, NanoStat, QUAST and CheckM2 from all samples (`multiqc/`) |
 
 ---
@@ -187,7 +198,7 @@ cd bacflow
 bash install_envs.sh
 ```
 
-The script automatically detects `mamba`, `micromamba` or `conda` (in that order of preference; bootstraps a fresh Miniforge if none is found), and installs the five environments **self-contained inside the repo** (`envs/bacflow-tools`, `envs/bacflow-medaka`, `envs/bacflow-checkm2`, `envs/bacflow-bakta`, `envs/bacflow-gtdbtk`, created with `--prefix` rather than as named global environments) and prints instructions for setting up `nextflow` in your terminal. Because they're self-contained, installation works the same way regardless of which Conda distribution is already on the machine (Miniforge, Anaconda, Miniconda, ...) or whether one is installed at all.
+The script automatically detects `mamba`, `micromamba` or `conda` (in that order of preference; bootstraps a fresh Miniforge if none is found), and installs the six environments **self-contained inside the repo** (`envs/bacflow-tools`, `envs/bacflow-medaka`, `envs/bacflow-checkm2`, `envs/bacflow-bakta`, `envs/bacflow-gtdbtk`, `envs/bacflow-abricate`, created with `--prefix` rather than as named global environments) and prints instructions for setting up `nextflow` in your terminal. Because they're self-contained, installation works the same way regardless of which Conda distribution is already on the machine (Miniforge, Anaconda, Miniconda, ...) or whether one is installed at all.
 
 **Databases (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB, AMRFinderPlus ~240MB) download in the background**, not blocking the rest of the install — `install_envs.sh` launches `download_databases.sh` via `nohup`/`disown` (survives the terminal/SSH session closing) and returns immediately. Each database marks `db_status/<name>.done` on completion; skipped automatically on a re-run if already present. Check progress with:
 ```bash
@@ -220,6 +231,7 @@ ls envs/ | grep bacflow-
 # bacflow-checkm2
 # bacflow-bakta
 # bacflow-gtdbtk
+# bacflow-abricate
 ```
 
 > **Important:** modules reference the environments by their **absolute path**, resolved via Nextflow's own `${projectDir}/envs/bacflow-X` — not by name or by the YAML path (referencing by name alone makes Nextflow try to *install a package* with that name from bioconda, instead of reusing the environment you already created). Because it's `projectDir`-relative rather than hardcoded to a specific `$HOME` layout, this works the same on any account/machine as long as `install_envs.sh` ran first — no assumption about which Conda distribution (Miniforge, Anaconda, ...) is already installed. Pre-installation is mandatory before the first run.
@@ -235,6 +247,7 @@ ls envs/ | grep bacflow-
 | `bacflow-checkm2` | `envs/checkm2.yaml` | checkm2=1.1.0 (**isolated** — real dependency conflict with `bacflow-tools`, discovered in practice) |
 | `bacflow-bakta` | `envs/bakta.yaml` | bakta=1.12.0 (installed cleanly on first try — no dependency conflict found) |
 | `bacflow-gtdbtk` | `envs/gtdbtk.yaml` | gtdbtk=2.7.2 (installed cleanly on first try — no dependency conflict found) |
+| `bacflow-abricate` | `envs/abricate.yaml` | abricate=1.0.1 (isolated for consistency with the other single-tool environments above; ships its own bundled reference databases, incl. VFDB — no external download needed, just `abricate --setupdb`, run once by `install_envs.sh`) |
 
 Medaka is kept in an isolated environment out of necessity, since its dependencies (TensorFlow, ONNX) conflict with bioconda-channel packages. The `setuptools=69.5.1` pin is required because newer versions removed the `pkg_resources` module, which `medaka=1.11.3` depends on.
 
@@ -245,6 +258,8 @@ Bakta requires its own database too (~84 GB uncompressed, `--type full`) — lik
 GTDB-Tk requires the largest of the four databases (~94 GB uncompressed) — also downloaded automatically in the background. The GTDB-Tk software version is tied to a specific compatible data release (this repo currently uses gtdbtk=2.7.2 with release232); if the pinned software version is ever bumped, the database release needs to be checked for compatibility and `--gtdbtk_db` (and possibly `download_databases.sh`'s download URL) updated to match.
 
 AMRFinderPlus (used to pick the right organism-specific database for genomic-surveillance reporting — see `bin/gtdb_to_amrfinder_organism.py`) doesn't get its own conda environment: `bacflow-bakta` already provides an `amrfinder`/`amrfinder_update` binary as a Bakta dependency, so it's reused directly instead of adding a fifth environment. Its own database (~240 MB, independently versioned from the copy bundled inside Bakta's database, so an update to one doesn't silently change the other) is downloaded the same way as the rest, in the background.
+
+`abricate` (VFDB virulence factors, complementing AMRFinderPlus — see footnote 11 in [Overview](#overview)) does get its own isolated environment, since it isn't a dependency of anything else already installed. Unlike the other databases in this section, VFDB needs no separate download: `abricate` ships several reference databases bundled inside its own conda package, and `install_envs.sh` runs `abricate --setupdb` once (local `makeblastdb` formatting only, no network access) right after creating the environment.
 
 > `NanoComp` comes from the bioconda package **`nanocomp`**, not `nanoplot` (which provides `NanoPlot`, a different tool — a detailed single-dataset report, without comparison).
 
@@ -405,7 +420,7 @@ Combines into a single HTML report: **FastQC** (raw/trimmed), **NanoStat** (raw/
 
 - Samples are disambiguated by their subfolder name under `results/{sample}/` (via `multiqc --dirs --dirs-depth -2` over an internal fixed-depth symlink) — necessary because tools like FastQC name their output after the input filename, not the sample, and two samples can use files with identical names (e.g. a generic `R1.fastq.gz`).
 - Pin in `envs/tools.yaml` updated from `multiqc=1.21` to `multiqc=1.35` — 1.21 had no native CheckM2 module (confirmed by testing `config.avail_modules`); 1.35 does.
-- `MULTIQC` waits on Bakta/GTDB-Tk/AMRFinderPlus finishing too (not just FastQC/NanoStat/QUAST/CheckM2), even though it doesn't parse their files itself — before v1.2.0 it could start as soon as the files it *does* aggregate were ready, occasionally racing ahead of annotation/taxonomy/AMR and producing inconsistent file counts run to run.
+- `MULTIQC` waits on Bakta/GTDB-Tk/AMRFinderPlus/abricate finishing too (not just FastQC/NanoStat/QUAST/CheckM2), even though it doesn't parse their files itself — before v1.2.0 it could start as soon as the files it *does* aggregate were ready, occasionally racing ahead of annotation/taxonomy/AMR and producing inconsistent file counts run to run.
 
 ---
 
@@ -414,11 +429,12 @@ Combines into a single HTML report: **FastQC** (raw/trimmed), **NanoStat** (raw/
 Runs **once at the end of the run** (same scope as `MULTIQC`), generating `results/dashboard.html` — one card per sample comparing real pre/post-polish metrics (QUAST, BUSCO, CheckM2), with a per-metric verdict and a badge for the input type used.
 
 - **Input badge**: each card shows whether the sample ran as `Long + Short` (hybrid, Flye path), `Long only` (long-read-only, Flye path with no short reads) or `Short only` (Unicycler path).
-- **Surveillance section** (top of each card, above the polish-comparison metrics): taxonomy (GTDB-Tk species + ANI + closest reference) → annotation (Bakta CDS/tRNA/rRNA counts) → AMR/virulence/stress (AMRFinderPlus genes as chips, which `--organism` database was used or "generic" if GTDB-Tk had no match, and which genes were rescued by polishing — present post-polish but not in the pre-polish nucleotide-only baseline).
+- **Surveillance section** (top of each card, above the polish-comparison metrics): taxonomy (GTDB-Tk species + ANI + closest reference) → annotation (Bakta CDS/tRNA/rRNA counts) → **Resistance genes** (AMRFinderPlus AMR+Stress genes as chips, which `--organism` database was used or "generic" if GTDB-Tk had no match, and which genes were rescued by polishing) → **Virulence genes** (AMRFinderPlus VIRULENCE genes + VFDB/abricate genes, merged and tagged by source — a distinct chip color marks VFDB-sourced genes).
 - **Per-metric verdict**: each row/chart carries its own improvement verdict (not the sample's overall verdict) — with a "noise floor" so irrelevant oscillations aren't flagged as improvement or regression.
 - **SVG slope charts**: 4 dynamically generated charts — QUAST (mismatches), BUSCO (%Complete), CheckM2 (Completeness), CheckM2 (Contamination). Each chart has a ⤢ button that opens it in a modal at a larger size alongside its underlying per-sample data table, with buttons to download that chart as a standalone PNG or SVG (self-contained, styling baked in — safe to paste into a report).
 - **Taxonomic classification (GTDB-Tk) section**, below the trend charts: cohort-wide species distribution (count + share of samples + average ANI per species) and a per-sample table (species, ANI, closest reference genome, classification method).
-- **Resistance, virulence & stress genes (AMRFinderPlus) section**, below that: cohort-wide gene frequency table (symbol, name, class/subclass, how many samples carry it, average identity/coverage) and a per-sample table (organism-matched vs. generic database, AMR/stress/virulence counts, gene chips — highlighting genes rescued by polishing, same chip style as the per-card AMR list). Requires `--plus` on the AMRFinderPlus call (see [Tools used](#tools-used)) — without it, every gene comes back typed `AMR` and the stress/virulence columns are always zero.
+- **Resistance genes (AMRFinderPlus) section**, below that: cohort-wide gene frequency table (symbol, name, class/subclass, how many samples carry it, average identity/coverage) and a per-sample table (organism-matched vs. generic database, AMR/stress counts, gene chips — highlighting genes rescued by polishing, same chip style as the per-card list). Requires `--plus` on the AMRFinderPlus call (see [Tools used](#tools-used)) — without it, every gene comes back typed `AMR` and the stress column is always zero.
+- **Virulence genes (AMRFinderPlus + VFDB) section**, below that, split out from Resistance genes since v1.3.0 (see [Tools used](#tools-used) for why one tool isn't enough here): cohort-wide gene frequency table tagged by source (AMRFinderPlus vs. VFDB) and a per-sample table with per-source counts and gene chips. A gene absent from both sources shows as 0, not necessarily absent from the genome — it may just be outside both databases' coverage for that organism.
 - **Table view**: a toggle next to the cards switches to a flat table (one row per metric per sample) — for Unicycler (short-only) samples, which have no pre/post pair, the table shows the real single-call CheckM2/BUSCO values (same numbers as the card) instead of a blank "no comparison" placeholder.
 - **"Assemblies not completed" section** (only rendered when non-empty): cross-references `pipeline_info/execution_trace.txt` against which samples actually produced a `{sample}.summary.json` — any sample with a `FAILED`/`ABORTED` task (`errorStrategy 'ignore'`) and no usable final result is listed with the failed process, exit code and workdir, so a dropped sample doesn't just silently vanish from the report. A sample with a failure in an unrelated branch that still finished normally (e.g. only `AMRFINDER_PREPOLISH` failed) is **not** listed here — the criterion is "no usable result", not "had any failure".
 - Implemented in `bin/summarize_sample.py` (per-sample parser, generates `{sample}.summary.json`), `bin/generate_dashboard.py` (aggregates the JSONs, parses the trace file, builds the HTML) and `assets/dashboard_template.html` (the real template, no mock data).
@@ -611,7 +627,7 @@ Several samples at once, with different profiles (hybrid/long-only/short-only)?
 
 | Level | Processes | CPUs per task (default) | Override |
 |---|---|---|---|
-| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST (+ pre/post-polish), AMRFinderPlus, MATCH_ORGANISM, MultiQC | 2 | `--cpus_low` |
+| `process_low` | NanoFilt, FASTP, FastQC, NanoStat, NanoComp, QUAST (+ pre/post-polish), AMRFinderPlus, MATCH_ORGANISM, abricate, MultiQC | 2 | `--cpus_low` |
 | `process_medium` | Racon, Medaka, Polypolish, NextPolish, BUSCO, CheckM2 (+ pre/post-polish), Bakta, GTDB-Tk | 8 | `--cpus_medium` |
 | `process_high` | Flye, Unicycler | 16 | `--cpus_high` |
 
@@ -699,6 +715,7 @@ bacflow/
 │   ├── checkm2.yaml          # → envs/bacflow-checkm2/ (isolated)
 │   ├── bakta.yaml             # → envs/bacflow-bakta/ (also provides amrfinder/amrfinder_update)
 │   ├── gtdbtk.yaml            # → envs/bacflow-gtdbtk/
+│   ├── abricate.yaml          # → envs/bacflow-abricate/ (isolated, ships its own bundled databases incl. VFDB)
 │   └── bacflow-*/             # actual environments, created by install_envs.sh (gitignored, self-contained)
 ├── bin/
 │   ├── summarize_sample.py           # per-sample dashboard JSON parser
@@ -728,6 +745,7 @@ bacflow/
     ├── bakta.nf            # BAKTA
     ├── gtdbtk.nf           # GTDBTK
     ├── amrfinder.nf        # MATCH_ORGANISM + AMRFINDER_PREPOLISH + AMRFINDER_POSTPOLISH
+    ├── abricate.nf         # ABRICATE (VFDB virulence factors)
     ├── multiqc.nf          # MULTIQC
     └── dashboard.nf        # SAMPLE_SUMMARY + DASHBOARD
 ```
@@ -775,7 +793,8 @@ results/
     │   └── amrfinder_organism/         organism.txt (matched AMRFinderPlus --organism value, empty if no match — both paths, final assembly)
     └── amr/
         ├── amrfinder_prepolish/        {sample}.amrfinder_prepolish.tsv (Flye path only, nucleotide-only baseline)
-        └── amrfinder_postpolish/       {sample}.amrfinder_postpolish.tsv (full mode, organism-aware — both paths, final assembly)
+        ├── amrfinder_postpolish/       {sample}.amrfinder_postpolish.tsv (full mode, organism-aware — both paths, final assembly)
+        └── vfdb/                       {sample}.vfdb.tsv (abricate --db vfdb — both paths, final assembly)
 ```
 
 A given sample only produces **one** of each evaluation pair: `_prepolish/`+`_postpolish/` if it went through the Flye path (denovo or reference), or the single call if it went through the Unicycler path. `busco*/` directories only exist when `--reference` was not provided; `checkm2*/` always exist.

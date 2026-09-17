@@ -26,6 +26,7 @@ include { SAMPLE_SUMMARY; DASHBOARD } from './modules/local/dashboard'
 include { BAKTA } from './modules/local/bakta'
 include { GTDBTK } from './modules/local/gtdbtk'
 include { MATCH_ORGANISM; AMRFINDER_PREPOLISH; AMRFINDER_POSTPOLISH } from './modules/local/amrfinder'
+include { ABRICATE } from './modules/local/abricate'
 
 // ─── banner ──────────────────────────────────────────────────────────────────
 // Plain text, no ANSI colors — this also gets written to .nextflow.log and any
@@ -316,6 +317,11 @@ workflow {
     def ch_amrfinder_pre_out = Channel.empty()
     def ch_amrfinder_post_out = Channel.empty()
 
+    // VFDB virulence factors via abricate — broader taxonomic coverage for
+    // virulence specifically than AMRFinderPlus's curated organism list (see
+    // modules/local/abricate.nf). Same scope as ch_bakta_out/ch_gtdbtk_out.
+    def ch_abricate_out = Channel.empty()
+
     // ─────────────────────────────────────────────────────────────────────────
     // DENOVO MODE
     // ─────────────────────────────────────────────────────────────────────────
@@ -437,6 +443,9 @@ workflow {
         GTDBTK(ch_draft_flye_final.mix(ch_draft_uni))
         ch_gtdbtk_out = ch_gtdbtk_out.mix(GTDBTK.out.report)
 
+        ABRICATE(ch_draft_flye_final.mix(ch_draft_uni))
+        ch_abricate_out = ch_abricate_out.mix(ABRICATE.out.report)
+
         // ── AMR (final assembly) ──────────────────────────────────────────────
         // Pre-polish nucleotide-only baseline — Flye path only, mirrors
         // QUAST_PREPOLISH (Unicycler has no equivalent "pre" state).
@@ -498,9 +507,10 @@ workflow {
             .join(ch_organism)
             .join(ch_amrfinder_pre_out, remainder: true)
             .join(ch_amrfinder_post_out)
-            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, bpre, bpost, gtdbtk, bakta, organism, amrpre, amrpost ->
+            .join(ch_abricate_out)
+            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, bpre, bpost, gtdbtk, bakta, organism, amrpre, amrpost, vfdb ->
                 tuple(s, input_type, assembler, qpre, qpost, bpre ?: [], bpost ?: [], cpre, cpost,
-                      gtdbtk, bakta, organism, amrpre ?: [], amrpost)
+                      gtdbtk, bakta, organism, amrpre ?: [], amrpost, vfdb)
             }
 
         SAMPLE_SUMMARY(ch_summary_input_denovo)
@@ -586,6 +596,9 @@ workflow {
         GTDBTK(ch_draft)
         ch_gtdbtk_out = ch_gtdbtk_out.mix(GTDBTK.out.report)
 
+        ABRICATE(ch_draft)
+        ch_abricate_out = ch_abricate_out.mix(ABRICATE.out.report)
+
         // ── AMR (final assembly) ──────────────────────────────────────────────
         AMRFINDER_PREPOLISH(ch_draft_prepolish)
         ch_amrfinder_pre_out = ch_amrfinder_pre_out.mix(AMRFINDER_PREPOLISH.out.report)
@@ -612,9 +625,10 @@ workflow {
             .join(ch_organism_ref)
             .join(ch_amrfinder_pre_out)
             .join(ch_amrfinder_post_out)
-            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, gtdbtk, bakta, organism, amrpre, amrpost ->
+            .join(ch_abricate_out)
+            .map { s, input_type, assembler, qpre, qpost, cpre, cpost, gtdbtk, bakta, organism, amrpre, amrpost, vfdb ->
                 tuple(s, input_type, assembler, qpre, qpost, [], [], cpre, cpost,
-                      gtdbtk, bakta, organism, amrpre, amrpost)
+                      gtdbtk, bakta, organism, amrpre, amrpost, vfdb)
             }
 
         SAMPLE_SUMMARY(ch_summary_input_ref)
@@ -624,13 +638,13 @@ workflow {
         error "Unknown --mode '${params.mode}'. Use 'denovo' or 'reference'."
     }
 
-    // Bakta/GTDB-Tk/AMRFinderPlus mixed in here too — MultiQC doesn't parse
-    // these itself (it scans outdir_abs directly, see multiqc.nf), but
+    // Bakta/GTDB-Tk/AMRFinderPlus/abricate mixed in here too — MultiQC doesn't
+    // parse these itself (it scans outdir_abs directly, see multiqc.nf), but
     // ch_multiqc_files.collect() is what MULTIQC waits on before starting, and
-    // without these four it could fire before annotation/taxonomy/AMR finish
+    // without these five it could fire before annotation/taxonomy/AMR finish
     // publishing, making the report's file counts inconsistent run to run.
     ch_multiqc_files = ch_multiqc_files
-        .mix(ch_bakta_out, ch_gtdbtk_out, ch_amrfinder_pre_out, ch_amrfinder_post_out)
+        .mix(ch_bakta_out, ch_gtdbtk_out, ch_amrfinder_pre_out, ch_amrfinder_post_out, ch_abricate_out)
 
     MULTIQC(ch_multiqc_files.collect(), outdir_abs)
     DASHBOARD(ch_summary_json.collect(), workflow.commitId ?: 'n/d', workflow.nextflow.version.toString(), outdir_abs)

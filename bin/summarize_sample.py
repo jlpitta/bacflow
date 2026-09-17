@@ -137,6 +137,23 @@ def parse_amr_genes(tsv_path):
     return genes
 
 
+def parse_vfdb_genes(tsv_path):
+    if not tsv_path or not os.path.exists(tsv_path):
+        return []
+    genes = []
+    with open(tsv_path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            genes.append({
+                "symbol": row.get("GENE") or None,
+                "product": row.get("PRODUCT") or None,
+                "coverage_pct": to_float(row.get("%COVERAGE")),
+                "identity_pct": to_float(row.get("%IDENTITY")),
+                "accession": row.get("ACCESSION") or None,
+            })
+    return genes
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample", required=True)
@@ -153,6 +170,7 @@ def main():
     ap.add_argument("--organism", default="", help="Matched AMRFinderPlus --organism value, or empty if no match")
     ap.add_argument("--amrfinder-pre", help="Nucleotide-only AMRFinderPlus TSV (Flye path only)")
     ap.add_argument("--amrfinder-post", required=True, help="Full-mode AMRFinderPlus TSV")
+    ap.add_argument("--vfdb", required=True, help="abricate --db vfdb TSV")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -201,6 +219,14 @@ def main():
         "n_stress": sum(1 for g in amr_post_genes if g["type"] == "STRESS"),
         "n_virulence": sum(1 for g in amr_post_genes if g["type"] == "VIRULENCE"),
         "genes_fixed_by_polish": genes_fixed_by_polish,
+    }
+
+    # VFDB (via abricate) — broader taxonomic coverage for virulence factors
+    # than AMRFinderPlus's curated organism list; see amrfinder.nf/abricate.nf.
+    vfdb_genes = parse_vfdb_genes(args.vfdb)
+    data["vfdb"] = {
+        "genes": vfdb_genes,
+        "n_genes": len(vfdb_genes),
     }
 
     with open(args.out, "w") as f:

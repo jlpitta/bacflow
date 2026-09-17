@@ -1,0 +1,7 @@
+name: bacflow-abricate
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - abricate=1.0.1

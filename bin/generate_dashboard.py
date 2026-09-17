@@ -453,16 +453,20 @@ def build_incomplete_section(trace_failures, completed_sample_names):
 '''
 
 
-# ─── AMR section (AMRFinderPlus, aggregated across all samples) ─────────────
+# ─── Resistance section (AMRFinderPlus AMR+Stress, aggregated) ──────────────
+# Split from the old combined "Resistance, virulence & stress" section
+# (2026-09) so resistance and virulence can be surfaced as two independent
+# panels — see build_virulence_section below for why (VFDB/abricate adds a
+# second data source for virulence specifically, with no resistance
+# equivalent, so the two no longer belong in one table).
 
-def build_amr_section(samples):
+def build_resistance_section(samples):
     amr_samples = [s for s in samples if s.get("amr")]
     if not amr_samples:
         return ""
 
     total_amr = sum(s["amr"].get("n_amr") or 0 for s in amr_samples)
     total_stress = sum(s["amr"].get("n_stress") or 0 for s in amr_samples)
-    total_virulence = sum(s["amr"].get("n_virulence") or 0 for s in amr_samples)
     n_matched_org = sum(1 for s in amr_samples if s["amr"].get("organism_used"))
     n_rescued = sum(len(s["amr"].get("genes_fixed_by_polish") or []) for s in amr_samples)
 
@@ -470,7 +474,6 @@ def build_amr_section(samples):
         stat_tile_html(len(amr_samples), "Samples analyzed"),
         stat_tile_html(total_amr, "AMR genes found"),
         stat_tile_html(total_stress, "Stress genes found"),
-        stat_tile_html(total_virulence, "Virulence genes found"),
         stat_tile_html(f"{n_matched_org}/{len(amr_samples)}", "Organism-matched database"),
     ]
     if n_rescued:
@@ -479,6 +482,8 @@ def build_amr_section(samples):
     gene_stats = {}
     for s in amr_samples:
         for g in s["amr"].get("genes") or []:
+            if g.get("type") not in ("AMR", "STRESS"):
+                continue
             symbol = g.get("symbol") or "?"
             e = gene_stats.setdefault(symbol, {
                 "name": g.get("name"), "class": g.get("class"), "subclass": g.get("subclass"),
@@ -511,7 +516,7 @@ def build_amr_section(samples):
         sample_esc = html.escape(s["sample"])
         organism = amr.get("organism_used")
         org_cell = f'<i>{html.escape(organism)}</i>' if organism else '<span class="surveil-hint">generic database</span>'
-        genes = amr.get("genes") or []
+        genes = [g for g in (amr.get("genes") or []) if g.get("type") in ("AMR", "STRESS")]
         if genes:
             fixed = set(amr.get("genes_fixed_by_polish") or [])
             chips = []
@@ -529,7 +534,7 @@ def build_amr_section(samples):
             genes_cell = '<span class="surveil-hint">no genes found</span>'
         sample_rows.append(
             f'<tr><td>{sample_esc}</td><td class="label-cell">{org_cell}</td>'
-            f'<td>{amr.get("n_amr") or 0}</td><td>{amr.get("n_stress") or 0}</td><td>{amr.get("n_virulence") or 0}</td>'
+            f'<td>{amr.get("n_amr") or 0}</td><td>{amr.get("n_stress") or 0}</td>'
             f'<td class="label-cell">{genes_cell}</td></tr>')
 
     gene_table_block = ""
@@ -546,8 +551,8 @@ def build_amr_section(samples):
     return f'''
   <section class="trend-section">
     <div class="trend-head">
-      <h2>Resistance, virulence &amp; stress genes (AMRFinderPlus)</h2>
-      <p>Genes detected on the post-polish assembly. Matched against an organism-specific database when GTDB-Tk found a species AMRFinderPlus recognizes, otherwise the generic database — a generic-database result is broader but less precise.</p>
+      <h2>Resistance genes (AMRFinderPlus)</h2>
+      <p>AMR and stress genes detected on the post-polish assembly. Matched against an organism-specific database when GTDB-Tk found a species AMRFinderPlus recognizes, otherwise the generic database — a generic-database result is broader but less precise.</p>
     </div>
     <div class="overview">
       {"".join(tiles)}
@@ -557,7 +562,126 @@ def build_amr_section(samples):
       <h3>Per-sample results</h3>
       <div class="table-scroll"><table><thead><tr>
         <th>Sample</th><th class="label-cell">Organism (database match)</th>
-        <th>AMR</th><th>Stress</th><th>Virulence</th><th class="label-cell">Genes</th>
+        <th>AMR</th><th>Stress</th><th class="label-cell">Genes</th>
+      </tr></thead><tbody>{"".join(sample_rows)}</tbody></table></div>
+    </div>
+  </section>
+'''
+
+
+# ─── Virulence section (AMRFinderPlus VIRULENCE + VFDB/abricate) ────────────
+# Two sources merged into one panel, tagged by source: AMRFinderPlus's
+# --plus virulence search is curated for a small set of well-studied
+# pathogens (Escherichia, Klebsiella pneumoniae, Staphylococcus aureus,
+# Vibrio cholerae, Campylobacter, Salmonella) and comes back with 0 hits
+# outside that group even when --plus is on; VFDB via abricate has much
+# broader taxonomic coverage for virulence factors specifically. Kept
+# separate from build_resistance_section above since VFDB has no
+# resistance/stress equivalent -- merging would misrepresent VFDB's scope.
+
+def build_virulence_section(samples):
+    vir_samples = [s for s in samples if s.get("amr") or s.get("vfdb")]
+    if not vir_samples:
+        return ""
+
+    total_amr_vir = sum(
+        sum(1 for g in (s.get("amr") or {}).get("genes", []) if g.get("type") == "VIRULENCE")
+        for s in vir_samples
+    )
+    total_vfdb = sum(len((s.get("vfdb") or {}).get("genes") or []) for s in vir_samples)
+
+    tiles = [
+        stat_tile_html(len(vir_samples), "Samples analyzed"),
+        stat_tile_html(total_amr_vir, "AMRFinderPlus virulence genes"),
+        stat_tile_html(total_vfdb, "VFDB genes (abricate)"),
+    ]
+
+    gene_stats = {}
+    for s in vir_samples:
+        for g in (s.get("amr") or {}).get("genes", []):
+            if g.get("type") != "VIRULENCE":
+                continue
+            key = (g.get("symbol") or "?", "AMRFinderPlus")
+            e = gene_stats.setdefault(key, {
+                "name": g.get("name"), "source": "AMRFinderPlus", "count": 0,
+                "identities": [], "coverages": [],
+            })
+            e["count"] += 1
+            if g.get("identity_pct") is not None:
+                e["identities"].append(g["identity_pct"])
+            if g.get("coverage_pct") is not None:
+                e["coverages"].append(g["coverage_pct"])
+        for g in (s.get("vfdb") or {}).get("genes") or []:
+            key = (g.get("symbol") or "?", "VFDB")
+            e = gene_stats.setdefault(key, {
+                "name": g.get("product"), "source": "VFDB", "count": 0,
+                "identities": [], "coverages": [],
+            })
+            e["count"] += 1
+            if g.get("identity_pct") is not None:
+                e["identities"].append(g["identity_pct"])
+            if g.get("coverage_pct") is not None:
+                e["coverages"].append(g["coverage_pct"])
+
+    gene_rows = []
+    for (symbol, source), e in sorted(gene_stats.items(), key=lambda kv: (-kv[1]["count"], kv[0][0])):
+        avg_id = sum(e["identities"]) / len(e["identities"]) if e["identities"] else None
+        avg_cov = sum(e["coverages"]) / len(e["coverages"]) if e["coverages"] else None
+        pct = 100.0 * e["count"] / len(vir_samples)
+        gene_rows.append(
+            f'<tr><td class="label-cell"><b>{html.escape(symbol)}</b></td>'
+            f'<td class="label-cell">{dash_or(e["name"])}</td>'
+            f'<td>{source}</td>'
+            f'<td>{e["count"]} ({pct:.0f}%)</td>'
+            f'<td>{f"{avg_id:.1f}%" if avg_id is not None else "—"}</td>'
+            f'<td>{f"{avg_cov:.1f}%" if avg_cov is not None else "—"}</td></tr>')
+
+    sample_rows = []
+    for s in vir_samples:
+        amr = s.get("amr") or {}
+        vfdb = s.get("vfdb") or {}
+        sample_esc = html.escape(s["sample"])
+        amr_vir_genes = [g for g in amr.get("genes", []) if g.get("type") == "VIRULENCE"]
+        vfdb_genes = vfdb.get("genes") or []
+        chips = []
+        for g in amr_vir_genes:
+            symbol = g.get("symbol") or "?"
+            chips.append(f'<span class="amr-chip" title="AMRFinderPlus">{html.escape(symbol)}</span>')
+        for g in vfdb_genes:
+            symbol = g.get("symbol") or "?"
+            title = html.escape(g.get("product") or "VFDB")
+            chips.append(f'<span class="amr-chip vfdb-source" title="VFDB · {title}">{html.escape(symbol)}</span>')
+        genes_cell = f'<div class="amr-chips">{"".join(chips)}</div>' if chips else '<span class="surveil-hint">no genes found</span>'
+        sample_rows.append(
+            f'<tr><td>{sample_esc}</td>'
+            f'<td>{len(amr_vir_genes)}</td><td>{len(vfdb_genes)}</td>'
+            f'<td class="label-cell">{genes_cell}</td></tr>')
+
+    gene_table_block = ""
+    if gene_rows:
+        gene_table_block = f'''
+    <div class="detail-block">
+      <h3>Genes found across samples</h3>
+      <div class="table-scroll"><table><thead><tr>
+        <th class="label-cell">Symbol</th><th class="label-cell">Name/Product</th>
+        <th>Source</th><th>Samples</th><th>Avg. identity</th><th>Avg. coverage</th>
+      </tr></thead><tbody>{"".join(gene_rows)}</tbody></table></div>
+    </div>'''
+
+    return f'''
+  <section class="trend-section">
+    <div class="trend-head">
+      <h2>Virulence genes (AMRFinderPlus + VFDB)</h2>
+      <p>Virulence factors detected on the post-polish assembly, from two sources: AMRFinderPlus's <code>--plus</code> search (curated for a handful of well-studied pathogens) and VFDB via <code>abricate</code> (broader taxonomic coverage). A gene absent from both sources is shown as 0, not necessarily absent from the genome.</p>
+    </div>
+    <div class="overview">
+      {"".join(tiles)}
+    </div>
+    {gene_table_block}
+    <div class="detail-block">
+      <h3>Per-sample results</h3>
+      <div class="table-scroll"><table><thead><tr>
+        <th>Sample</th><th>AMRFinderPlus</th><th>VFDB</th><th class="label-cell">Genes</th>
       </tr></thead><tbody>{"".join(sample_rows)}</tbody></table></div>
     </div>
   </section>
@@ -645,10 +769,11 @@ def annotation_html(ann):
             f'<span class="surveil-value">{" · ".join(parts)} <span class="surveil-hint">(Bakta)</span></span></div>')
 
 
-def amr_html(amr):
+def resistance_html(amr):
+    """'Resistance genes' block: AMRFinderPlus AMR + Stress only."""
     if not amr:
         return ""
-    genes = amr.get("genes") or []
+    genes = [g for g in (amr.get("genes") or []) if g.get("type") in ("AMR", "STRESS")]
     fixed = set(amr.get("genes_fixed_by_polish") or [])
     organism = amr.get("organism_used")
 
@@ -657,13 +782,11 @@ def amr_html(amr):
         counts.append(f'{amr["n_amr"]} AMR')
     if amr.get("n_stress"):
         counts.append(f'{amr["n_stress"]} stress')
-    if amr.get("n_virulence"):
-        counts.append(f'{amr["n_virulence"]} virulence')
     summary = " · ".join(counts) if counts else "no genes found"
     org_note = (f' · organism: <i>{html.escape(organism)}</i>' if organism
                 else ' · generic database (no organism match)')
 
-    row = (f'<div class="surveil-row"><span class="surveil-label">AMR / virulence / stress</span>'
+    row = (f'<div class="surveil-row"><span class="surveil-label">Resistance genes</span>'
            f'<span class="surveil-value">{summary}{org_note}</span></div>')
 
     if not genes:
@@ -685,8 +808,45 @@ def amr_html(amr):
     return row + chips_html
 
 
+def virulence_html(amr, vfdb):
+    """'Virulence genes' block: AMRFinderPlus VIRULENCE + VFDB/abricate, tagged by source."""
+    amr_genes = [g for g in ((amr or {}).get("genes") or []) if g.get("type") == "VIRULENCE"]
+    vfdb_genes = (vfdb or {}).get("genes") or []
+    if not amr and not vfdb:
+        return ""
+
+    fixed = set((amr or {}).get("genes_fixed_by_polish") or [])
+    n_total = len(amr_genes) + len(vfdb_genes)
+    summary = (f'{n_total} gene{"s" if n_total != 1 else ""} '
+               f'({len(amr_genes)} AMRFinderPlus · {len(vfdb_genes)} VFDB)') if n_total else "no genes found"
+
+    row = (f'<div class="surveil-row"><span class="surveil-label">Virulence genes</span>'
+           f'<span class="surveil-value">{summary}</span></div>')
+
+    if not n_total:
+        return row
+
+    chips = []
+    for g in amr_genes:
+        symbol = g.get("symbol") or "?"
+        rescued = symbol in fixed
+        chip_class = "amr-chip rescued" if rescued else "amr-chip"
+        title_bits = ["AMRFinderPlus"]
+        if rescued:
+            title_bits.append("rescued by polishing")
+        chips.append(f'<span class="{chip_class}" title="{" · ".join(title_bits)}">{html.escape(symbol)}</span>')
+    for g in vfdb_genes:
+        symbol = g.get("symbol") or "?"
+        title = html.escape(g.get("product") or "VFDB")
+        chips.append(f'<span class="amr-chip vfdb-source" title="VFDB · {title}">{html.escape(symbol)}</span>')
+    chips_html = f'<div class="amr-chips">{"".join(chips)}</div>'
+
+    return row + chips_html
+
+
 def surveillance_html(s):
-    rows = taxonomy_html(s.get("taxonomy")) + annotation_html(s.get("annotation")) + amr_html(s.get("amr"))
+    rows = (taxonomy_html(s.get("taxonomy")) + annotation_html(s.get("annotation"))
+            + resistance_html(s.get("amr")) + virulence_html(s.get("amr"), s.get("vfdb")))
     if not rows:
         return ""
     return f'<div class="surveillance">{rows}</div>'
@@ -847,7 +1007,8 @@ def main():
 
     trend_html = build_trend_section(samples)
     taxonomy_section_html = build_taxonomy_section(samples)
-    amr_section_html = build_amr_section(samples)
+    resistance_section_html = build_resistance_section(samples)
+    virulence_section_html = build_virulence_section(samples)
     cards_html = "".join(sample_card_html(s) for s in samples)
     table_html = table_rows_html(samples)
 
@@ -864,7 +1025,8 @@ def main():
                 .replace("{{OVERVIEW_TILES}}", "".join(tiles))
                 .replace("{{TREND_SECTION}}", trend_html)
                 .replace("{{TAXONOMY_SECTION}}", taxonomy_section_html)
-                .replace("{{AMR_SECTION}}", amr_section_html)
+                .replace("{{RESISTANCE_SECTION}}", resistance_section_html)
+                .replace("{{VIRULENCE_SECTION}}", virulence_section_html)
                 .replace("{{INCOMPLETE_SECTION}}", incomplete_section_html)
                 .replace("{{CARDS_HTML}}", cards_html)
                 .replace("{{TABLE_ROWS}}", table_html))

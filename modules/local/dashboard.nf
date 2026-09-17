@@ -19,7 +19,8 @@ process SAMPLE_SUMMARY {
           path(bakta, stageAs: 'bakta'),
           val(organism),
           path(amrfinder_pre, stageAs: 'amrfinder_pre.tsv'),
-          path(amrfinder_post, stageAs: 'amrfinder_post.tsv')
+          path(amrfinder_post, stageAs: 'amrfinder_post.tsv'),
+          path(vfdb, stageAs: 'vfdb.tsv')
 
     output:
     path "${sample}.summary.json", emit: json
@@ -40,6 +41,7 @@ process SAMPLE_SUMMARY {
         --bakta ${bakta} \
         --organism "${organism}" \
         --amrfinder-post ${amrfinder_post} \
+        --vfdb ${vfdb} \
         ${busco_args} \
         ${amrfinder_pre_args} \
         --out ${sample}.summary.json

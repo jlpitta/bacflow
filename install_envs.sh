@@ -19,7 +19,7 @@ BANNER
 echo "Instalador de ambientes"
 echo ""
 
-TOTAL_STEPS=6
+TOTAL_STEPS=7
 CURRENT_STEP=0
 CURRENT_STEP_NAME=""
 STEP_START_TS=0
@@ -115,6 +115,15 @@ step_end
 
 step_start "Instalando bacflow-gtdbtk"
 create_or_update_env "bacflow-gtdbtk" "${SCRIPT_DIR}/envs/gtdbtk.yaml"
+step_end
+
+# abricate ships its reference databases (incl. vfdb) bundled inside the
+# conda package itself -- --setupdb just runs makeblastdb on the bundled
+# fasta files, entirely local/offline, no separate download step needed
+# (unlike CheckM2/Bakta/GTDB-Tk below).
+step_start "Instalando bacflow-abricate"
+create_or_update_env "bacflow-abricate" "${SCRIPT_DIR}/envs/abricate.yaml"
+${PKG} run --prefix "${ENVS_DIR}/bacflow-abricate" abricate --setupdb
 step_end
 
 # Bancos de dados (CheckM2 ~1.7GB, Bakta ~84GB, GTDB-Tk ~94GB) são grandes
